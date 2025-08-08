@@ -114,7 +114,12 @@ def cmd_analyze(args: argparse.Namespace):
     df["ema50"] = ta.ema(df["close"], 50)
     df["rsi14"] = ta.rsi(df["close"], 14)
     df["atr14"] = ta.atr(df, 14)
-    out = chan.analyze(df)
+    out = chan.analyze(
+        df,
+        div_min_price_ext_pct=args.div_min_price_ext_pct,
+        div_min_hist_delta=args.div_min_hist_delta,
+        div_require_hist_sign_consistency=args.div_require_hist_sign_consistency,
+    )
     sigs = out["signals"]
     # annotate pivot bands into output
     bands = out.get("bands")
@@ -144,7 +149,12 @@ def cmd_backtest(args: argparse.Namespace):
         df = df[df["datetime"] <= end]
     df = df.reset_index(drop=True)
 
-    out = chan.analyze(df)
+    out = chan.analyze(
+        df,
+        div_min_price_ext_pct=args.div_min_price_ext_pct,
+        div_min_hist_delta=args.div_min_hist_delta,
+        div_require_hist_sign_consistency=args.div_require_hist_sign_consistency,
+    )
     sigs = out["signals"]
     # optional strategy filters
     df_ind = strategy.ensure_indicators(df)
@@ -182,8 +192,18 @@ def cmd_mtf(args: argparse.Namespace):
     hdf = hcf.df.copy().reset_index(drop=True)
 
     # analyze both frames
-    lo = chan.analyze(ldf)
-    ho = chan.analyze(hdf)
+    lo = chan.analyze(
+        ldf,
+        div_min_price_ext_pct=args.div_min_price_ext_pct,
+        div_min_hist_delta=args.div_min_hist_delta,
+        div_require_hist_sign_consistency=args.div_require_hist_sign_consistency,
+    )
+    ho = chan.analyze(
+        hdf,
+        div_min_price_ext_pct=args.div_min_price_ext_pct,
+        div_min_hist_delta=args.div_min_hist_delta,
+        div_require_hist_sign_consistency=args.div_require_hist_sign_consistency,
+    )
 
     # align HTF context onto LTF
     htf_ctx = mtf.align_htf_to_ltf(ldf, hdf, ho["segments"], ho["bands"])
@@ -269,7 +289,12 @@ def cmd_plot(args: argparse.Namespace):
         pivot_low = df["htf_pivot_low"]
         pivot_high = df["htf_pivot_high"]
     else:
-        out = chan.analyze(df)
+        out = chan.analyze(
+            df,
+            div_min_price_ext_pct=args.div_min_price_ext_pct,
+            div_min_hist_delta=args.div_min_hist_delta,
+            div_require_hist_sign_consistency=args.div_require_hist_sign_consistency,
+        )
         bands = out.get("bands")
         if bands is not None and not bands.empty:
             pivot_low = bands["pivot_low"]
@@ -297,7 +322,12 @@ def cmd_plot(args: argparse.Namespace):
                 base_signals = pd.DataFrame({"index": idxs, "signal": syms, "price": df.loc[idxs, "close"].values})
         if base_signals is None or base_signals.empty:
             if 'out' not in locals():
-                out = chan.analyze(df)
+                out = chan.analyze(
+                    df,
+                    div_min_price_ext_pct=args.div_min_price_ext_pct,
+                    div_min_hist_delta=args.div_min_hist_delta,
+                    div_require_hist_sign_consistency=args.div_require_hist_sign_consistency,
+                )
             base_signals = out.get("signals")
 
     signals_faded = None
@@ -393,6 +423,10 @@ def build_parser():
     a = sub.add_parser("analyze", help="Run indicators + Chan analysis")
     a.add_argument("--input", required=True)
     a.add_argument("--out", default=None)
+    # divergence tuning
+    a.add_argument("--div-min-price-ext-pct", type=float, default=0.0, help="Min price extension percent for divergence, e.g., 0.003")
+    a.add_argument("--div-min-hist-delta", type=float, default=0.0, help="Min MACD histogram delta for divergence")
+    a.add_argument("--div-require-hist-sign-consistency", action="store_true", help="Require MACD hist signs consistent (buy3<=0, sell3>=0)")
     a.set_defaults(func=cmd_analyze)
 
     b = sub.add_parser("backtest", help="Backtest simplified Chan strategy")
@@ -408,6 +442,10 @@ def build_parser():
     # risk params
     b.add_argument("--stop-pct", type=float, default=None, help="Stop loss percent, e.g., 0.02 for 2%")
     b.add_argument("--tp-pct", type=float, default=None, help="Take profit percent, e.g., 0.04 for 4%")
+    # divergence tuning
+    b.add_argument("--div-min-price-ext-pct", type=float, default=0.0)
+    b.add_argument("--div-min-hist-delta", type=float, default=0.0)
+    b.add_argument("--div-require-hist-sign-consistency", action="store_true")
     b.set_defaults(func=cmd_backtest)
 
     m = sub.add_parser("mtf", help="Multi-timeframe: align HTF context to LTF and optional backtest")
@@ -423,6 +461,10 @@ def build_parser():
     m.add_argument("--rsi-max", type=float, default=None)
     m.add_argument("--min-atr-pct", type=float, default=None)
     m.add_argument("--max-atr-pct", type=float, default=None)
+    # divergence tuning
+    m.add_argument("--div-min-price-ext-pct", type=float, default=0.0)
+    m.add_argument("--div-min-hist-delta", type=float, default=0.0)
+    m.add_argument("--div-require-hist-sign-consistency", action="store_true")
     # risk params for backtest
     m.add_argument("--stop-pct", type=float, default=None)
     m.add_argument("--tp-pct", type=float, default=None)
@@ -449,6 +491,10 @@ def build_parser():
     g.add_argument("--stop-pct", type=float, default=None)
     g.add_argument("--tp-pct", type=float, default=None)
     g.add_argument("--save-trades", default=None, help="Save computed trades CSV to this path")
+    # divergence tuning (affects on-the-fly analysis only)
+    g.add_argument("--div-min-price-ext-pct", type=float, default=0.0)
+    g.add_argument("--div-min-hist-delta", type=float, default=0.0)
+    g.add_argument("--div-require-hist-sign-consistency", action="store_true")
     g.set_defaults(func=cmd_plot)
 
     return p

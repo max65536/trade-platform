@@ -482,7 +482,14 @@ def pivot_retest_signals(df_with_bands: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(rows).drop_duplicates(subset=["index", "signal"]).sort_values("index").reset_index(drop=True)
 
 
-def divergence_signals(df: pd.DataFrame, segments: List[Segment]) -> pd.DataFrame:
+def divergence_signals(
+    df: pd.DataFrame,
+    segments: List[Segment],
+    *,
+    min_price_ext_pct: float = 0.0,
+    min_hist_delta: float = 0.0,
+    require_hist_sign_consistency: bool = False,
+) -> pd.DataFrame:
     """Third buy/sell (三买/三卖) via momentum divergence at segment turns.
 
     Use MACD histogram as momentum proxy:
@@ -509,14 +516,24 @@ def divergence_signals(df: pd.DataFrame, segments: List[Segment]) -> pd.DataFram
             # potential buy3 at end of down segment
             if last_down is not None:
                 prev_idx, prev_price, prev_h = last_down
-                if price < prev_price and h > prev_h:
+                ext_pct = (prev_price - price) / max(abs(prev_price), 1e-12)
+                hist_ok = (h - prev_h) > min_hist_delta
+                sign_ok = True
+                if require_hist_sign_consistency:
+                    sign_ok = (prev_h <= 0) and (h <= 0)
+                if (price < prev_price) and (ext_pct >= min_price_ext_pct) and hist_ok and sign_ok:
                     rows.append({"index": idx, "signal": "buy", "price": price, "kind": "buy3"})
             last_down = (idx, price, h)
         else:
             # potential sell3 at end of up segment
             if last_up is not None:
                 prev_idx, prev_price, prev_h = last_up
-                if price > prev_price and h < prev_h:
+                ext_pct = (price - prev_price) / max(abs(prev_price), 1e-12)
+                hist_ok = (prev_h - h) > min_hist_delta
+                sign_ok = True
+                if require_hist_sign_consistency:
+                    sign_ok = (prev_h >= 0) and (h >= 0)
+                if (price > prev_price) and (ext_pct >= min_price_ext_pct) and hist_ok and sign_ok:
                     rows.append({"index": idx, "signal": "sell", "price": price, "kind": "sell3"})
             last_up = (idx, price, h)
     if not rows:
@@ -524,7 +541,13 @@ def divergence_signals(df: pd.DataFrame, segments: List[Segment]) -> pd.DataFram
     return pd.DataFrame(rows).sort_values("index").reset_index(drop=True)
 
 
-def analyze_full(df: pd.DataFrame):
+def analyze_full(
+    df: pd.DataFrame,
+    *,
+    div_min_price_ext_pct: float = 0.0,
+    div_min_hist_delta: float = 0.0,
+    div_require_hist_sign_consistency: bool = False,
+):
     """Fuller Chan pipeline with inclusion, stricter segmenting, Zhongshu, and extended signals.
 
     Steps:
@@ -550,7 +573,13 @@ def analyze_full(df: pd.DataFrame):
         seg_sigs = seg_sigs.assign(kind="turn")
     piv_sigs = pivot_breakout_signals(df_local)
     retest = pivot_retest_signals(df_local)
-    div = divergence_signals(df_local, segs)
+    div = divergence_signals(
+        df_local,
+        segs,
+        min_price_ext_pct=div_min_price_ext_pct,
+        min_hist_delta=div_min_hist_delta,
+        require_hist_sign_consistency=div_require_hist_sign_consistency,
+    )
 
     sigs = pd.concat([seg_sigs, piv_sigs, retest, div], ignore_index=True)
     if not sigs.empty:
@@ -569,14 +598,27 @@ def analyze_full(df: pd.DataFrame):
     }
 
 
-def analyze(df: pd.DataFrame, mode: str | None = None):
+def analyze(
+    df: pd.DataFrame,
+    mode: str | None = None,
+    *,
+    # divergence tuning (only for full mode)
+    div_min_price_ext_pct: float = 0.0,
+    div_min_hist_delta: float = 0.0,
+    div_require_hist_sign_consistency: bool = False,
+):
     """Analyze with full Chan workflow by default.
 
     For backward-compatibility, passing mode="simple" runs the prior simplified logic.
     """
     if mode == "simple":
         return analyze.__wrapped__(df)  # type: ignore[attr-defined]
-    return analyze_full(df)
+    return analyze_full(
+        df,
+        div_min_price_ext_pct=div_min_price_ext_pct,
+        div_min_hist_delta=div_min_hist_delta,
+        div_require_hist_sign_consistency=div_require_hist_sign_consistency,
+    )
 
 
 # Keep original analyze implementation bound for backward compatibility via __wrapped__

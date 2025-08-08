@@ -20,15 +20,21 @@ Trade Platform (ccxt + TA + Chan)
 
 - 分析（含中枢与信号合并）：
   - `pdm run trade-cli analyze --input data/BTCUSDT-1h.csv --out data/BTCUSDT-1h-analyzed.csv`
+  - 背驰参数（可选）：
+    - `--div-min-price-ext-pct 0.003`（最低价格延伸 0.3%）
+    - `--div-min-hist-delta 0.002`（MACD 柱最小变化量）
+    - `--div-require-hist-sign-consistency`（买3≤0、卖3≥0）
 
 - 回测：
   - `pdm run trade-cli backtest --input data/BTCUSDT-1h.csv --start 2023-01-01 --end 2024-01-01`
 
 - 多周期合成（示例：4h + 1d）：
   - `pdm run trade-cli mtf --lower-input data/BTCUSDT-4h.csv --higher-input data/BTCUSDT-1d.csv --out data/BTCUSDT-4h-mtf.csv --require-htf-breakout --min-htf-run 3 --run-backtest`
+  - 同样支持背驰参数：`--div-min-price-ext-pct/--div-min-hist-delta/--div-require-hist-sign-consistency`
 
 - 可视化（主题/标注可选）：
   - `pdm run trade-cli plot --input data/BTCUSDT-4h-mtf.csv --use-mtf-bands --use-mtf-signals --theme dark --label-segments --save out/4h-mtf.png`
+  - 若需要按当前数据即时计算（非 MTF 注入），也支持背驰参数：`--div-min-price-ext-pct/--div-min-hist-delta/--div-require-hist-sign-consistency`
   - 说明：若 `signals` 含 `kind` 列，会按类别自动渲染：
     - `buy1/sell1` 实心箭头；`buy2/sell2` 实心箭头（带带宽色描边）；`buy3/sell3` 空心箭头（彩色描边）；`turn` 为 “x” 标记；并在箭头附近标注 1/2/3。
 
@@ -69,6 +75,8 @@ Trade Platform (ccxt + TA + Chan)
 - `pdm run mtf_momentum_4h_1d`：4h+1d 动量（方向+中枢突破）
 - `pdm run mtf_meanrev_4h_1d`：4h+1d 均值回归（方向一致）
 - `pdm run pipeline -- --exchange binance --symbols BTC/USDT --lower-tf 4h --higher-tf 1d --out-dir runs --require-htf-breakout --min-htf-run 3 --rsi-min 55 --min-atr-pct 0.004 --stop-pct 0.02 --tp-pct 0.04`
+  - 背驰参数同样可用于 pipeline：
+    - `--div-min-price-ext-pct 0.003 --div-min-hist-delta 0.002 --div-require-hist-sign-consistency`
 
 目录结构
 - trade_platform/
@@ -98,3 +106,14 @@ Trade Platform (ccxt + TA + Chan)
   - `from trade_platform import chan`
   - `out = chan.analyze(df)`（默认完整模式）
   - 返回结构：`fractals/pens/segments/pivots/signals/bands`；`signals` 含三类买卖点：`buy1/sell1`（突破）、`buy2/sell2`（回测）、`buy3/sell3`（背驰），其中信号的交易方向仍为 `signal=buy/sell`，类别标在 `kind` 列。
+
+可调参数：背驰（buy3/sell3）
+- 背驰基于 `MACD` 柱动能（工程化近似），在每个线段末端判定：
+  - 买3：价格创新低但柱值变“高”（更不负）
+  - 卖3：价格创新高但柱值变“低”（更不正）
+- 可通过 `chan.analyze` 传参调节严格度：
+  - `div_min_price_ext_pct`：最低价格延伸比例（默认 0.0，例如 0.003 表示 ≥0.3% 才认定延伸）
+  - `div_min_hist_delta`：MACD 柱最小变化量（默认 0.0，例如 0.002）
+  - `div_require_hist_sign_consistency`：是否要求两次柱号同号（买3≤0、卖3≥0），默认 False
+- 示例：
+  - `out = chan.analyze(df, div_min_price_ext_pct=0.003, div_min_hist_delta=0.002, div_require_hist_sign_consistency=True)`

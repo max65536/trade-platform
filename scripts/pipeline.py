@@ -64,6 +64,10 @@ def run_pipeline(
     tp_pct: Optional[float] = None,
     # Plotting
     theme: str = "light",
+    # Divergence tuning
+    div_min_price_ext_pct: float = 0.0,
+    div_min_hist_delta: float = 0.0,
+    div_require_hist_sign_consistency: bool = False,
 ) -> None:
     raw_dir = os.path.join(out_dir, "raw")
     ann_dir = os.path.join(out_dir, "annotated")
@@ -84,8 +88,18 @@ def run_pipeline(
         hdf = fetch_csv(exchange, sym, higher_tf, htf_csv, since, limit, max_bars)
 
         # 2) Analyze both frames
-        lo = chan.analyze(ldf)
-        ho = chan.analyze(hdf)
+        lo = chan.analyze(
+            ldf,
+            div_min_price_ext_pct=div_min_price_ext_pct,
+            div_min_hist_delta=div_min_hist_delta,
+            div_require_hist_sign_consistency=div_require_hist_sign_consistency,
+        )
+        ho = chan.analyze(
+            hdf,
+            div_min_price_ext_pct=div_min_price_ext_pct,
+            div_min_hist_delta=div_min_hist_delta,
+            div_require_hist_sign_consistency=div_require_hist_sign_consistency,
+        )
 
         # 3) Align HTF context to LTF
         htf_ctx = mtf.align_htf_to_ltf(ldf, hdf, ho["segments"], ho["bands"])
@@ -179,6 +193,10 @@ def build_parser():
     p.add_argument("--tp-pct", type=float, default=None)
     # Plot
     p.add_argument("--theme", choices=["light", "dark", "minimal"], default="light")
+    # Divergence tuning
+    p.add_argument("--div-min-price-ext-pct", type=float, default=0.0, help="Min price extension pct for divergence (e.g., 0.003)")
+    p.add_argument("--div-min-hist-delta", type=float, default=0.0, help="Min MACD histogram delta for divergence")
+    p.add_argument("--div-require-hist-sign-consistency", action="store_true", help="Require MACD hist signs consistent (buy3<=0, sell3>=0)")
     return p
 
 
@@ -203,9 +221,11 @@ def main():
         stop_pct=args.stop_pct,
         tp_pct=args.tp_pct,
         theme=args.theme,
+        div_min_price_ext_pct=args.div_min_price_ext_pct,
+        div_min_hist_delta=args.div_min_hist_delta,
+        div_require_hist_sign_consistency=args.div_require_hist_sign_consistency,
     )
 
 
 if __name__ == "__main__":
     main()
-
