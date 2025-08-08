@@ -33,10 +33,14 @@ Trade Platform (ccxt + TA + Chan)
   - 同样支持背驰参数：`--div-min-price-ext-pct/--div-min-hist-delta/--div-require-hist-sign-consistency`
 
 - 可视化（主题/标注可选）：
-  - `pdm run trade-cli plot --input data/BTCUSDT-4h-mtf.csv --use-mtf-bands --use-mtf-signals --theme dark --label-segments --save out/4h-mtf.png`
+  - `pdm run trade-cli plot --input data/BTCUSDT-4h-mtf.csv --use-mtf-bands --use-mtf-signals --theme dark --label-segments --show-macd --save out/4h-mtf.png`
   - 若需要按当前数据即时计算（非 MTF 注入），也支持背驰参数：`--div-min-price-ext-pct/--div-min-hist-delta/--div-require-hist-sign-consistency`
   - 说明：若 `signals` 含 `kind` 列，会按类别自动渲染：
     - `buy1/sell1` 实心箭头；`buy2/sell2` 实心箭头（带带宽色描边）；`buy3/sell3` 空心箭头（彩色描边）；`turn` 为 “x” 标记；并在箭头附近标注 1/2/3。
+  - `--show-macd`：在价格图下方叠加 MACD 子图（柱形 + 线），并在有 `buy3/sell3` 时在 MACD 柱上高亮标记，辅助判断背驰。
+  - 其他子图（默认关闭，可按需开启）：
+    - `--show-rsi`：增加 RSI(14) 子图（含 70/30 参考线）
+    - `--show-atr`：增加 ATR(14) 子图
 
 - 批量拉取：
   - `pdm run trade-cli batch --exchange binance --symbols BTC/USDT ETH/USDT --timeframes 4h 1d --output-dir data/spot --name-template {symbol_noslash}-{timeframe}.csv --max-bars 5000`

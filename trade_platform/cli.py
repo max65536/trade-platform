@@ -387,6 +387,9 @@ def cmd_plot(args: argparse.Namespace):
         trades=trades,
         show_signals=not args.hide_signals,
         show_faded_legend=True,
+        show_macd=args.show_macd,
+        show_rsi=args.show_rsi,
+        show_atr=args.show_atr,
     )
 
 def build_parser():
@@ -491,6 +494,11 @@ def build_parser():
     g.add_argument("--stop-pct", type=float, default=None)
     g.add_argument("--tp-pct", type=float, default=None)
     g.add_argument("--save-trades", default=None, help="Save computed trades CSV to this path")
+    g.add_argument("--show-macd", action="store_true", help="Show MACD subplot under price chart")
+    g.add_argument("--show-rsi", action="store_true", help="Show RSI subplot")
+    g.add_argument("--show-atr", action="store_true", help="Show ATR subplot")
+    g.add_argument("--rsi-length", type=int, default=14, help="RSI length (default: 14)")
+    g.add_argument("--atr-length", type=int, default=14, help="ATR length (default: 14)")
     # divergence tuning (affects on-the-fly analysis only)
     g.add_argument("--div-min-price-ext-pct", type=float, default=0.0)
     g.add_argument("--div-min-hist-delta", type=float, default=0.0)

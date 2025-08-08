@@ -35,14 +35,48 @@ def plot_kline(
     label_trades: bool = True,
     show_signals: bool = True,
     show_faded_legend: bool = True,
+    show_macd: bool = False,
+    show_rsi: bool = False,
+    show_atr: bool = False,
+    rsi_length: int = 14,
+    atr_length: int = 14,
 ):
     plt, LineCollection, Line2D = _lazy_import_mpl()
     import numpy as np
+    from . import indicators as ta
 
     df = df.reset_index(drop=True)
     x = np.arange(len(df))
 
-    fig, ax = plt.subplots(figsize=(width, height))
+    # Layout: price + optional indicator subplots (MACD/RSI/ATR)
+    indicators = []
+    if show_macd:
+        indicators.append("macd")
+    if show_rsi:
+        indicators.append("rsi")
+    if show_atr:
+        indicators.append("atr")
+
+    if indicators:
+        fig, axes = plt.subplots(
+            1 + len(indicators),
+            1,
+            sharex=True,
+            gridspec_kw={"height_ratios": [3] + [1] * len(indicators), "hspace": 0.08},
+            figsize=(width, height),
+        )
+        # axes is a numpy ndarray; normalize to a flat python list
+        try:
+            axes = list(axes.ravel())
+        except Exception:
+            axes = [axes]
+        ax = axes[0]
+        ind_axes = {}
+        for i, name in enumerate(indicators, start=1):
+            ind_axes[name] = axes[i]
+    else:
+        fig, ax = plt.subplots(figsize=(width, height))
+        ind_axes = {}
 
     # Theme setup
     if theme not in ("light", "dark", "minimal"):
@@ -237,6 +271,58 @@ def plot_kline(
     for spine in ax.spines.values():
         spine.set_color(axis_c)
     ax.tick_params(colors=axis_c)
+
+    # MACD subplot
+    if "macd" in ind_axes:
+        ax_macd = ind_axes["macd"]
+        macd_line, macd_signal, macd_hist = ta.macd(df["close"])
+        macd_line = macd_line.fillna(0.0)
+        macd_signal = macd_signal.fillna(0.0)
+        macd_hist = macd_hist.fillna(0.0)
+
+        # Histogram bars
+        colors = [up_c if v >= 0 else dn_c for v in macd_hist]
+        ax_macd.bar(x, macd_hist.values, color=colors, width=0.6, alpha=0.5, label="MACD hist")
+        # Lines
+        ax_macd.plot(x, macd_line.values, color=seg_c, linewidth=1.2, label="MACD")
+        ax_macd.plot(x, macd_signal.values, color=pen_c, linewidth=1.0, label="Signal")
+        ax_macd.axhline(0, color=axis_c, linewidth=0.8, alpha=0.5)
+        ax_macd.grid(True, color=grid_c)
+        ax_macd.tick_params(colors=axis_c)
+        for spine in ax_macd.spines.values():
+            spine.set_color(axis_c)
+        # Highlight buy3/sell3 if available
+        if show_signals and signals is not None and not signals.empty and "kind" in signals.columns:
+            b3 = signals[(signals.signal == "buy") & (signals.kind == "buy3")]["index"].astype(int)
+            s3 = signals[(signals.signal == "sell") & (signals.kind == "sell3")]["index"].astype(int)
+            if not b3.empty:
+                ax_macd.scatter(b3, macd_hist.loc[b3].values, marker="o", s=24, facecolors="none", edgecolors=up_c, linewidths=1.2, label="buy3")
+            if not s3.empty:
+                ax_macd.scatter(s3, macd_hist.loc[s3].values, marker="o", s=24, facecolors="none", edgecolors=dn_c, linewidths=1.2, label="sell3")
+        ax_macd.legend(loc="upper left")
+
+    if "rsi" in ind_axes:
+        ax_rsi = ind_axes["rsi"]
+        rsi = ta.rsi(df["close"], rsi_length).fillna(50.0)
+        ax_rsi.plot(x, rsi.values, color=seg_c, linewidth=1.2, label=f"RSI({rsi_length})")
+        ax_rsi.axhline(70, color=axis_c, linewidth=0.8, linestyle="--", alpha=0.6)
+        ax_rsi.axhline(30, color=axis_c, linewidth=0.8, linestyle="--", alpha=0.6)
+        ax_rsi.set_ylim(0, 100)
+        ax_rsi.grid(True, color=grid_c)
+        ax_rsi.tick_params(colors=axis_c)
+        for spine in ax_rsi.spines.values():
+            spine.set_color(axis_c)
+        ax_rsi.legend(loc="upper left")
+
+    if "atr" in ind_axes:
+        ax_atr = ind_axes["atr"]
+        atr_series = ta.atr(df, atr_length).fillna(0.0)
+        ax_atr.plot(x, atr_series.values, color=pen_c, linewidth=1.2, label=f"ATR({atr_length})")
+        ax_atr.grid(True, color=grid_c)
+        ax_atr.tick_params(colors=axis_c)
+        for spine in ax_atr.spines.values():
+            spine.set_color(axis_c)
+        ax_atr.legend(loc="upper left")
 
     fig.tight_layout()
     if out:
