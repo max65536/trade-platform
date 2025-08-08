@@ -13,6 +13,7 @@ from . import chan
 from .backtest import simple_execute
 from . import multiframe as mtf
 from . import plotting
+from . import strategy
 
 
 def _parse_date(s: str) -> int:
@@ -79,7 +80,30 @@ def cmd_backtest(args: argparse.Namespace):
     df = df.reset_index(drop=True)
 
     out = chan.analyze(df)
-    res = simple_execute(df, out["signals"], fee_rate=args.fee)
+    sigs = out["signals"]
+    # optional strategy filters
+    df_ind = strategy.ensure_indicators(df)
+    sigs = strategy.apply_signal_filters(
+        sigs,
+        df_ind,
+        rsi_min=args.rsi_min,
+        rsi_max=args.rsi_max,
+        min_atr_pct=args.min_atr_pct,
+        max_atr_pct=args.max_atr_pct,
+    )
+    # choose executor
+    if args.stop_pct is not None or args.tp_pct is not None:
+        from .backtest import execute_with_risk
+
+        res = execute_with_risk(
+            df,
+            sigs,
+            fee_rate=args.fee,
+            stop_loss_pct=args.stop_pct,
+            take_profit_pct=args.tp_pct,
+        )
+    else:
+        res = simple_execute(df, sigs, fee_rate=args.fee)
     print("Backtest stats:")
     for k, v in res.stats.items():
         print(f"- {k}: {v}")
@@ -134,7 +158,29 @@ def cmd_mtf(args: argparse.Namespace):
         print(f"Annotated LTF saved to {args.out}")
 
     if args.run_backtest:
-        res = simple_execute(ldf, filt_sigs, fee_rate=args.fee)
+        # strategy filters on LTF with indicators
+        ldf_ind = strategy.ensure_indicators(ldf)
+        strat_sigs = strategy.apply_signal_filters(
+            filt_sigs,
+            ldf_ind,
+            rsi_min=args.rsi_min,
+            rsi_max=args.rsi_max,
+            min_atr_pct=args.min_atr_pct,
+            max_atr_pct=args.max_atr_pct,
+        )
+        # choose executor
+        if args.stop_pct is not None or args.tp_pct is not None:
+            from .backtest import execute_with_risk
+
+            res = execute_with_risk(
+                ldf,
+                strat_sigs,
+                fee_rate=args.fee,
+                stop_loss_pct=args.stop_pct,
+                take_profit_pct=args.tp_pct,
+            )
+        else:
+            res = simple_execute(ldf, strat_sigs, fee_rate=args.fee)
         print("Backtest (MTF) stats:")
         for k, v in res.stats.items():
             print(f"- {k}: {v}")
@@ -214,6 +260,14 @@ def build_parser():
     b.add_argument("--start", default=None)
     b.add_argument("--end", default=None)
     b.add_argument("--fee", type=float, default=0.0005)
+    # strategy filters
+    b.add_argument("--rsi-min", type=float, default=None)
+    b.add_argument("--rsi-max", type=float, default=None)
+    b.add_argument("--min-atr-pct", type=float, default=None, help="Min ATR/close ratio, e.g., 0.005")
+    b.add_argument("--max-atr-pct", type=float, default=None, help="Max ATR/close ratio")
+    # risk params
+    b.add_argument("--stop-pct", type=float, default=None, help="Stop loss percent, e.g., 0.02 for 2%")
+    b.add_argument("--tp-pct", type=float, default=None, help="Take profit percent, e.g., 0.04 for 4%")
     b.set_defaults(func=cmd_backtest)
 
     m = sub.add_parser("mtf", help="Multi-timeframe: align HTF context to LTF and optional backtest")
@@ -224,6 +278,14 @@ def build_parser():
     m.add_argument("--fee", type=float, default=0.0005)
     m.add_argument("--require-htf-breakout", action="store_true", help="Keep buys only if close>HTF pivot_high (and sells if close<HTF pivot_low)")
     m.add_argument("--min-htf-run", type=int, default=0, help="Minimum consecutive HTF bars in same direction")
+    # strategy filters
+    m.add_argument("--rsi-min", type=float, default=None)
+    m.add_argument("--rsi-max", type=float, default=None)
+    m.add_argument("--min-atr-pct", type=float, default=None)
+    m.add_argument("--max-atr-pct", type=float, default=None)
+    # risk params for backtest
+    m.add_argument("--stop-pct", type=float, default=None)
+    m.add_argument("--tp-pct", type=float, default=None)
     m.set_defaults(func=cmd_mtf)
 
     g = sub.add_parser("plot", help="Plot candles with pivots, pens, segments, and signals")
