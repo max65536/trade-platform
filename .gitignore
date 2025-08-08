@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+.venv/
+venv/
+
+# PDM
+.pdm.toml
+.pdm-python
+
+# Env
+.env
+
+# Data and outputs
+data/
+out/
+*.png
+
+# OS / tools
+.DS_Store
+.idea/
+.vscode/
+*.log
+

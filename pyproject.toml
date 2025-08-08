@@ -29,3 +29,8 @@ trade-cli = "trade_platform.cli:main"
 [tool.pdm]
 package-dir = "."
 
+[tool.pdm.scripts]
+lint = "ruff check trade_platform tests"
+format = "black trade_platform tests"
+format-check = "black --check trade_platform tests"
+test = "pytest -q"

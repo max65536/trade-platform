@@ -24,6 +24,8 @@
   - MTF (4h+1d): `pdm run trade-cli mtf --lower-input data/BTCUSDT-4h.csv --higher-input data/BTCUSDT-1d.csv --out data/BTCUSDT-4h-mtf.csv --require-htf-breakout --min-htf-run 3 --run-backtest`
   - Plot: `pdm run trade-cli plot --input data/BTCUSDT-4h-mtf.csv --use-mtf-bands --use-mtf-signals --theme dark --save out/plot.png`
 - Tests: `pdm run pytest -q`
+- Lint: `pdm run lint` (ruff)
+- Format: `pdm run format` (black) / `pdm run format-check`
 
 ## Coding Style & Naming Conventions
 - Python 3.10+, PEP 8, 4-space indentation
