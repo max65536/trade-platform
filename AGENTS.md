@@ -14,15 +14,16 @@
 - `README.md`: quickstart and examples
 - `data/`: local CSVs (optional)
 
-## Build, Test, and Development Commands
-- Env: `python -m venv .venv && source .venv/bin/activate`
-- Install: `pip install -r requirements.txt`
-- CLI:
-  - Fetch: `python -m trade_platform.cli fetch --exchange binance --symbol BTC/USDT --timeframe 1h --output data/BTCUSDT-1h.csv`
-  - Analyze: `python -m trade_platform.cli analyze --input data/BTCUSDT-1h.csv --out data/annotated.csv`
-  - Backtest: `python -m trade_platform.cli backtest --input data/BTCUSDT-1h.csv`
-  - MTF (4h+1d): `python -m trade_platform.cli mtf --lower-input data/BTCUSDT-4h.csv --higher-input data/BTCUSDT-1d.csv --out data/BTCUSDT-4h-mtf.csv --require-htf-breakout --min-htf-run 3 --run-backtest`
-  - Plot: `python -m trade_platform.cli plot --input data/BTCUSDT-4h-mtf.csv --use-mtf-bands --use-mtf-signals --theme dark --save out/plot.png`
+## Build, Test, and Development Commands (PDM)
+- Install runtime deps: `pdm install`
+- Install dev deps: `pdm install -G dev`
+- CLI (via console script):
+  - Fetch: `pdm run trade-cli fetch --exchange binance --symbol BTC/USDT --timeframe 1h --output data/BTCUSDT-1h.csv`
+  - Analyze: `pdm run trade-cli analyze --input data/BTCUSDT-1h.csv --out data/annotated.csv`
+  - Backtest: `pdm run trade-cli backtest --input data/BTCUSDT-1h.csv`
+  - MTF (4h+1d): `pdm run trade-cli mtf --lower-input data/BTCUSDT-4h.csv --higher-input data/BTCUSDT-1d.csv --out data/BTCUSDT-4h-mtf.csv --require-htf-breakout --min-htf-run 3 --run-backtest`
+  - Plot: `pdm run trade-cli plot --input data/BTCUSDT-4h-mtf.csv --use-mtf-bands --use-mtf-signals --theme dark --save out/plot.png`
+- Tests: `pdm run pytest -q`
 
 ## Coding Style & Naming Conventions
 - Python 3.10+, PEP 8, 4-space indentation

@@ -1,0 +1,31 @@
+[build-system]
+requires = ["pdm-backend>=2.2"]
+build-backend = "pdm.backend"
+
+[project]
+name = "trade-platform"
+version = "0.1.0"
+description = "CCXT-based research/trading skeleton with TA, simplified Chan, MTF, backtest, and plotting"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{ name = "Your Name" }]
+dependencies = [
+  "ccxt>=4.2.0",
+  "pandas>=2.0",
+  "numpy>=1.24",
+  "matplotlib>=3.7",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=7.0",
+  "ruff>=0.4",
+  "black>=24.3",
+]
+
+[project.scripts]
+trade-cli = "trade_platform.cli:main"
+
+[tool.pdm]
+package-dir = "."
+

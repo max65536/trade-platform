@@ -9,25 +9,30 @@ Trade Platform (ccxt + TA + Chan)
 - 回测器与可视化（matplotlib）
 - 命令行工具
 
-快速开始
+快速开始（PDM）
 - Python 3.10+
-- pip install -r requirements.txt
+- 安装依赖：`pdm install`（如未安装 PDM，可用 `pipx install pdm`）
+- 运行 CLI：`pdm run trade-cli --help`
 
 命令行用法
 - 拉取K线：
-  - `python -m trade_platform.cli fetch --exchange binance --symbol BTC/USDT --timeframe 1h --limit 2000 --output data/BTCUSDT-1h.csv`
+  - `pdm run trade-cli fetch --exchange binance --symbol BTC/USDT --timeframe 1h --limit 2000 --output data/BTCUSDT-1h.csv`
 
 - 分析（含中枢与信号合并）：
-  - `python -m trade_platform.cli analyze --input data/BTCUSDT-1h.csv --out data/BTCUSDT-1h-analyzed.csv`
+  - `pdm run trade-cli analyze --input data/BTCUSDT-1h.csv --out data/BTCUSDT-1h-analyzed.csv`
 
 - 回测：
-  - `python -m trade_platform.cli backtest --input data/BTCUSDT-1h.csv --start 2023-01-01 --end 2024-01-01`
+  - `pdm run trade-cli backtest --input data/BTCUSDT-1h.csv --start 2023-01-01 --end 2024-01-01`
 
 - 多周期合成（示例：4h + 1d）：
-  - `python -m trade_platform.cli mtf --lower-input data/BTCUSDT-4h.csv --higher-input data/BTCUSDT-1d.csv --out data/BTCUSDT-4h-mtf.csv --require-htf-breakout --min-htf-run 3 --run-backtest`
+  - `pdm run trade-cli mtf --lower-input data/BTCUSDT-4h.csv --higher-input data/BTCUSDT-1d.csv --out data/BTCUSDT-4h-mtf.csv --require-htf-breakout --min-htf-run 3 --run-backtest`
 
 - 可视化（主题/标注可选）：
-  - `python -m trade_platform.cli plot --input data/BTCUSDT-4h-mtf.csv --use-mtf-bands --use-mtf-signals --theme dark --label-segments --save out/4h-mtf.png`
+  - `pdm run trade-cli plot --input data/BTCUSDT-4h-mtf.csv --use-mtf-bands --use-mtf-signals --theme dark --label-segments --save out/4h-mtf.png`
+
+测试
+- 安装开发依赖：`pdm install -G dev`
+- 运行：`pdm run pytest -q`
 
 目录结构
 - trade_platform/
