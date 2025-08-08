@@ -5,40 +5,44 @@
   - `exchanges.py`: ccxt wrapper for OHLCV
   - `dataio.py`: CSV I/O and schema
   - `indicators.py`: SMA/EMA/RSI/ATR/MACD
-  - `chan.py`: simplified Chan (fractals→pens→segments)
+  - `chan.py`: Chan (fractals→pens→segments→pivots + signals)
+  - `multiframe.py`: HTF→LTF alignment and filters
   - `backtest.py`: basic executor + stats
+  - `plotting.py`: matplotlib visualizations
   - `cli.py`: CLI entry (`python -m trade_platform.cli`)
-- `requirements.txt`: Python deps
+- `requirements.txt`: Python deps (matplotlib included)
 - `README.md`: quickstart and examples
-- `data/`: suggested local folder for downloaded CSVs (not required)
+- `data/`: local CSVs (optional)
 
 ## Build, Test, and Development Commands
-- Create env: `python -m venv .venv && source .venv/bin/activate`
-- Install deps: `pip install -r requirements.txt`
-- Run CLI examples:
+- Env: `python -m venv .venv && source .venv/bin/activate`
+- Install: `pip install -r requirements.txt`
+- CLI:
   - Fetch: `python -m trade_platform.cli fetch --exchange binance --symbol BTC/USDT --timeframe 1h --output data/BTCUSDT-1h.csv`
   - Analyze: `python -m trade_platform.cli analyze --input data/BTCUSDT-1h.csv --out data/annotated.csv`
   - Backtest: `python -m trade_platform.cli backtest --input data/BTCUSDT-1h.csv`
+  - MTF (4h+1d): `python -m trade_platform.cli mtf --lower-input data/BTCUSDT-4h.csv --higher-input data/BTCUSDT-1d.csv --out data/BTCUSDT-4h-mtf.csv --require-htf-breakout --min-htf-run 3 --run-backtest`
+  - Plot: `python -m trade_platform.cli plot --input data/BTCUSDT-4h-mtf.csv --use-mtf-bands --use-mtf-signals --theme dark --save out/plot.png`
 
 ## Coding Style & Naming Conventions
 - Python 3.10+, PEP 8, 4-space indentation
-- Use type hints and clear docstrings for public functions
+- Type hints and concise docstrings on public APIs
 - Naming: modules/functions `snake_case`, classes `PascalCase`, constants `UPPER_SNAKE`
-- Keep modules small and focused; prefer pure functions for indicators/analysis
-- Optional (if installed): `black trade_platform` and `ruff check trade_platform`
+- Keep modules focused; indicators/analysis prefer pure functions
+- Optional tools: `black trade_platform` and `ruff check trade_platform`
 
 ## Testing Guidelines
-- Framework: `pytest` (add to a local env if needed)
-- Location: `tests/` with files named `test_*.py`
-- Scope: unit tests for indicators, fractal/pen/segment builders, and backtest math
+- Framework: `pytest`
+- Location: `tests/` with `test_*.py`
+- Scope: indicators, Chan pipeline (fractals/pens/segments/pivots), MTF alignment, backtest math
 - Run: `pytest -q`
-- Prefer small, deterministic fixtures (synthetic OHLCV) over network calls
+- Prefer deterministic synthetic OHLCV over network calls
 
 ## Commit & Pull Request Guidelines
-- Commits: concise, imperative subject; group related changes; include rationale in body
-- PRs: clear description, scope, before/after notes; link related issues; include sample commands/output
-- Checks: run analyze/backtest on a small CSV; ensure no secrets added; format/lint if available
+- Commits: imperative, concise subjects; group related changes; rationale in body
+- PRs: description, scope, before/after evidence; link issues; include sample commands/output
+- Checks: run analyze/mtf/backtest on a small CSV; no secrets; format/lint if available
 
 ## Security & Configuration Tips
-- Do not hardcode API keys; use env vars (e.g., `API_KEY`, `API_SECRET`) or a local `.env` not committed
-- Avoid committing large data files; prefer small samples for repro
+- No hardcoded API keys; use env vars (e.g., `API_KEY`, `API_SECRET`) or local `.env` (gitignored)
+- Avoid committing large CSVs; keep small samples for repro
