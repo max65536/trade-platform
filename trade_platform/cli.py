@@ -12,6 +12,7 @@ from . import indicators as ta
 from . import chan
 from .backtest import simple_execute
 from . import multiframe as mtf
+from . import plotting
 
 
 def _parse_date(s: str) -> int:
@@ -103,7 +104,15 @@ def cmd_mtf(args: argparse.Namespace):
 
     # base signals from LTF
     base_sigs = lo["signals"]
-    filt_sigs = mtf.filter_signals_with_htf(base_sigs, ldf)
+    # ensure close is present for breakout filtering
+    if "close" not in ldf.columns:
+        raise ValueError("Lower timeframe CSV must include 'close' column")
+    filt_sigs = mtf.filter_signals_with_htf_opts(
+        base_sigs,
+        ldf,
+        require_htf_breakout=args.require_htf_breakout,
+        min_htf_run=args.min_htf_run,
+    )
 
     # annotate both sets of signals into df for inspection
     if not base_sigs.empty:
@@ -129,6 +138,57 @@ def cmd_mtf(args: argparse.Namespace):
         print("Backtest (MTF) stats:")
         for k, v in res.stats.items():
             print(f"- {k}: {v}")
+
+
+def cmd_plot(args: argparse.Namespace):
+    cf = CandleFrame.read_csv(args.input)
+    df = cf.df.copy().reset_index(drop=True)
+    if args.limit and len(df) > args.limit:
+        df = df.tail(args.limit).reset_index(drop=True)
+
+    pivot_low = None
+    pivot_high = None
+    pens = None
+    segments = None
+    signals = None
+    pivots = None
+
+    use_mtf_bands = args.use_mtf_bands and ("htf_pivot_low" in df.columns and "htf_pivot_high" in df.columns)
+    if use_mtf_bands:
+        pivot_low = df["htf_pivot_low"]
+        pivot_high = df["htf_pivot_high"]
+    else:
+        out = chan.analyze(df)
+        bands = out.get("bands")
+        if bands is not None and not bands.empty:
+            pivot_low = bands["pivot_low"]
+            pivot_high = bands["pivot_high"]
+        pens = out.get("pens")
+        segments = out.get("segments")
+        signals = out.get("signals")
+        pivots = out.get("pivots")
+
+    if args.use_mtf_signals and "signal_mtf" in df.columns:
+        s_col = df["signal_mtf"].dropna()
+        if not s_col.empty:
+            idxs = s_col.index.values
+            syms = s_col.values
+            signals = pd.DataFrame({"index": idxs, "signal": syms, "price": df.loc[idxs, "close"].values})
+
+    plotting.plot_kline(
+        df,
+        out=args.save,
+        title=f"Plot: {args.input}",
+        pivot_low=pivot_low,
+        pivot_high=pivot_high,
+        pens=pens,
+        segments=segments,
+        signals=signals,
+        pivots=pivots,
+        theme=args.theme,
+        label_segments=args.label_segments,
+        label_pivots=args.label_pivots,
+    )
 
 def build_parser():
     p = argparse.ArgumentParser(description="Trade platform CLI (ccxt + TA + Chan)")
@@ -162,7 +222,20 @@ def build_parser():
     m.add_argument("--out", default=None, help="Write annotated LTF CSV")
     m.add_argument("--run-backtest", action="store_true", help="Run backtest on filtered LTF signals")
     m.add_argument("--fee", type=float, default=0.0005)
+    m.add_argument("--require-htf-breakout", action="store_true", help="Keep buys only if close>HTF pivot_high (and sells if close<HTF pivot_low)")
+    m.add_argument("--min-htf-run", type=int, default=0, help="Minimum consecutive HTF bars in same direction")
     m.set_defaults(func=cmd_mtf)
+
+    g = sub.add_parser("plot", help="Plot candles with pivots, pens, segments, and signals")
+    g.add_argument("--input", required=True)
+    g.add_argument("--limit", type=int, default=400, help="Plot last N bars")
+    g.add_argument("--save", default=None, help="Path to save PNG; if omitted, show window")
+    g.add_argument("--use-mtf-bands", action="store_true", help="Use columns htf_pivot_low/high if present")
+    g.add_argument("--use-mtf-signals", action="store_true", help="Prefer signal_mtf column if present")
+    g.add_argument("--theme", choices=["light", "dark", "minimal"], default="light")
+    g.add_argument("--label-segments", action="store_true", help="Draw direction labels on segments")
+    g.add_argument("--label-pivots", action="store_true", help="Draw pivot IDs (requires analysis-derived pivots)")
+    g.set_defaults(func=cmd_plot)
 
     return p
 
