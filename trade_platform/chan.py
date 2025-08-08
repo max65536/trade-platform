@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import List, Literal, Optional
+from typing import List, Literal, Optional, Tuple
 
 import pandas as pd
 
@@ -270,7 +270,12 @@ def pivot_breakout_signals(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def analyze(df: pd.DataFrame):
-    """Convenience pipeline: fractals -> pens -> segments -> pivots -> signals."""
+    """Convenience pipeline: fractals -> pens -> segments -> pivots -> signals.
+
+    Note: This is the simplified pipeline retained for backward-compatibility.
+    For a fuller Chan workflow with K-line inclusion (包含关系) and extended signals,
+    call analyze_full(df) or analyze(df, mode="full").
+    """
     fr = find_fractals(df)
     pens = build_pens(fr)
     segs = build_segments(pens)
@@ -293,3 +298,312 @@ def analyze(df: pd.DataFrame):
         "signals": sigs,
         "bands": bands,
     }
+
+
+# =============================
+# Full Chan workflow (工程化完整版)
+# =============================
+
+@dataclass
+class MergedBar:
+    index: int
+    high: float
+    low: float
+    close: float
+
+
+def _bars_contained(h1: float, l1: float, h2: float, l2: float) -> bool:
+    """Return True if bar2 is contained by bar1 or vice-versa (包含关系)."""
+    return (h2 <= h1 and l2 >= l1) or (h2 >= h1 and l2 <= l1)
+
+
+def merge_kbars_inclusion(df: pd.DataFrame) -> List[MergedBar]:
+    """Merge K-lines by Chan inclusion rules (包含关系合并).
+
+    Heuristic: maintain current trend direction; when containment occurs, collapse
+    both highs and lows toward the trend side (up: take max; down: take min).
+    Returns a list of merged bars carrying their last original index.
+    """
+    merged: List[MergedBar] = []
+    direction = 0  # -1 down, +1 up
+    highs = df["high"].values
+    lows = df["low"].values
+    closes = df["close"].values
+    for i in range(len(df)):
+        hi, lo, cl = float(highs[i]), float(lows[i]), float(closes[i])
+        if not merged:
+            merged.append(MergedBar(index=i, high=hi, low=lo, close=cl))
+            continue
+        last = merged[-1]
+        if _bars_contained(last.high, last.low, hi, lo):
+            # collapse toward trend side
+            if direction >= 0:
+                # up: keep larger high and higher low
+                last.high = max(last.high, hi)
+                last.low = max(last.low, lo)
+            else:
+                # down: keep lower high and lower low
+                last.high = min(last.high, hi)
+                last.low = min(last.low, lo)
+            last.index = i
+            last.close = cl
+            continue
+        # not contained: add new and update direction
+        if hi > last.high and lo > last.low:
+            direction = +1
+        elif hi < last.high and lo < last.low:
+            direction = -1
+        # else ambiguous, keep previous direction
+        merged.append(MergedBar(index=i, high=hi, low=lo, close=cl))
+    return merged
+
+
+def find_fractals_on_merged(bars: List[MergedBar], left: int = 2, right: int = 2) -> List[Fractal]:
+    """Fractals computed on inclusion-merged bars, mapped back to original indices."""
+    frs: List[Fractal] = []
+    n = len(bars)
+    if n == 0:
+        return frs
+    for i in range(left, n - right):
+        window = bars[i - left : i + right + 1]
+        hs = [b.high for b in window]
+        ls = [b.low for b in window]
+        center = bars[i]
+        if center.high == max(hs) and hs.count(center.high) == 1:
+            frs.append(Fractal(index=center.index, kind="top", price=center.high))
+        if center.low == min(ls) and ls.count(center.low) == 1:
+            frs.append(Fractal(index=center.index, kind="bottom", price=center.low))
+    frs.sort(key=lambda f: f.index)
+    return frs
+
+
+def build_pens_full(
+    fractals: List[Fractal],
+    min_price_move: float = 0.0,
+) -> List[Pen]:
+    """Build pens from alternating fractals with inclusion-aware indices.
+
+    Differences vs simplified:
+    - requires strict alternation top/bottom
+    - optional minimal price move
+    - no hard min_separation; separation implied by merged bars
+    """
+    pens: List[Pen] = []
+    if not fractals:
+        return pens
+
+    # deduplicate adjacent same-type by extremity
+    fs: List[Fractal] = []
+    for f in fractals:
+        if not fs:
+            fs.append(f)
+            continue
+        last = fs[-1]
+        if f.kind == last.kind:
+            if f.kind == "top":
+                if f.price >= last.price:
+                    fs[-1] = f
+            else:
+                if f.price <= last.price:
+                    fs[-1] = f
+        else:
+            fs.append(f)
+
+    for a, b in zip(fs, fs[1:]):
+        if a.kind == b.kind:
+            continue
+        pct = abs(b.price - a.price) / max(1e-12, a.price)
+        if pct < min_price_move:
+            continue
+        direction = "up" if b.price > a.price else "down"
+        pens.append(Pen(start=a, end=b, direction=direction))
+    return pens
+
+
+def build_segments_full(pens: List[Pen]) -> List[Segment]:
+    """Three-pens make a segment (三笔成段) with persistent direction."""
+    segs: List[Segment] = []
+    if len(pens) < 3:
+        return segs
+    i = 0
+    while i + 2 < len(pens):
+        p0, p1, p2 = pens[i], pens[i + 1], pens[i + 2]
+        # segment direction follows p2
+        if p0.direction == p1.direction == p2.direction:
+            start = p0.start
+            end = p2.end
+            segs.append(
+                Segment(
+                    start_idx=start.index,
+                    end_idx=end.index,
+                    direction=p2.direction,
+                    start_price=start.price,
+                    end_price=end.price,
+                )
+            )
+            i += 2  # allow overlap
+        else:
+            i += 1
+    return segs
+
+
+def pivot_retest_signals(df_with_bands: pd.DataFrame) -> pd.DataFrame:
+    """Second buy/sell (二买/二卖) as retests of pivot bands.
+
+    - After a breakout above pivot_high, a subsequent dip below and then close back above pivot_high -> buy2
+    - After a breakdown below pivot_low, a rally above and then close back below pivot_low -> sell2
+    """
+    rows: List[dict] = []
+    close = df_with_bands["close"].values
+    pl = df_with_bands["pivot_low"].values
+    ph = df_with_bands["pivot_high"].values
+    n = len(df_with_bands)
+    above = False
+    below = False
+    for i in range(1, n):
+        # track state relative to bands
+        if pd.notna(ph[i]) and close[i] > ph[i]:
+            above = True
+        if pd.notna(pl[i]) and close[i] < pl[i]:
+            below = True
+
+        # buy2: was above, dipped below band then reclaimed
+        if pd.notna(ph[i]) and pd.notna(ph[i - 1]):
+            if above and close[i - 1] < ph[i - 1] and close[i] > ph[i]:
+                rows.append({"index": i, "signal": "buy2", "price": float(close[i])})
+                above = False
+        # sell2: was below, rallied above then lost it
+        if pd.notna(pl[i]) and pd.notna(pl[i - 1]):
+            if below and close[i - 1] > pl[i - 1] and close[i] < pl[i]:
+                rows.append({"index": i, "signal": "sell2", "price": float(close[i])})
+                below = False
+    if not rows:
+        return pd.DataFrame(columns=["index", "signal", "price"])
+    return pd.DataFrame(rows).drop_duplicates(subset=["index", "signal"]).sort_values("index").reset_index(drop=True)
+
+
+def divergence_signals(df: pd.DataFrame, segments: List[Segment]) -> pd.DataFrame:
+    """Third buy/sell (三买/三卖) via momentum divergence at segment turns.
+
+    Use MACD histogram as momentum proxy:
+    - buy3: new lower low at a down-turn with higher (less negative) MACD hist vs previous down-turn
+    - sell3: new higher high at an up-turn with lower (less positive) MACD hist vs previous up-turn
+    Signals placed at segment end index.
+    """
+    from . import indicators as ta
+
+    if not segments:
+        return pd.DataFrame(columns=["index", "signal", "price"])
+    macd_line, sig, hist = ta.macd(df["close"])
+    # fill NaNs conservatively
+    hist = hist.fillna(0.0)
+
+    rows: List[dict] = []
+    last_down: Optional[Tuple[int, float, float]] = None  # (idx, price, hist)
+    last_up: Optional[Tuple[int, float, float]] = None
+    for seg in segments:
+        idx = seg.end_idx
+        price = seg.end_price
+        h = float(hist.iloc[idx]) if 0 <= idx < len(df) else 0.0
+        if seg.direction == "down":
+            # potential buy3 at end of down segment
+            if last_down is not None:
+                prev_idx, prev_price, prev_h = last_down
+                if price < prev_price and h > prev_h:
+                    rows.append({"index": idx, "signal": "buy3", "price": price})
+            last_down = (idx, price, h)
+        else:
+            # potential sell3 at end of up segment
+            if last_up is not None:
+                prev_idx, prev_price, prev_h = last_up
+                if price > prev_price and h < prev_h:
+                    rows.append({"index": idx, "signal": "sell3", "price": price})
+            last_up = (idx, price, h)
+    if not rows:
+        return pd.DataFrame(columns=["index", "signal", "price"])
+    return pd.DataFrame(rows).sort_values("index").reset_index(drop=True)
+
+
+def analyze_full(df: pd.DataFrame):
+    """Fuller Chan pipeline with inclusion, stricter segmenting, Zhongshu, and extended signals.
+
+    Steps:
+    - 合并K线（包含关系）
+    - 分型（基于合并K线）
+    - 笔（严格交替）
+    - 线段（三笔成段）
+    - 中枢（笔价区间交叠）
+    - 信号：线段拐点、枢纽突破、一/二买卖、背驰（三买/三卖）
+    """
+    merged = merge_kbars_inclusion(df)
+    fr = find_fractals_on_merged(merged)
+    pens = build_pens_full(fr)
+    segs = build_segments_full(pens)
+    pivots = build_pivots(pens)
+
+    bands = annotate_pivot_bands(len(df), pivots)
+    df_local = df.reset_index(drop=True).copy()
+    df_local = pd.concat([df_local, bands], axis=1)
+
+    seg_sigs = segment_signals(segs)
+    piv_sigs = pivot_breakout_signals(df_local)
+    retest = pivot_retest_signals(df_local)
+    div = divergence_signals(df_local, segs)
+
+    sigs = pd.concat([seg_sigs, piv_sigs, retest, div], ignore_index=True)
+    if not sigs.empty:
+        sigs = (
+            sigs.sort_values(["index", "signal"])  # deterministic ordering
+            .drop_duplicates(subset=["index", "signal"], keep="first")
+            .reset_index(drop=True)
+        )
+    return {
+        "fractals": fr,
+        "pens": pens,
+        "segments": segs,
+        "pivots": pivots,
+        "signals": sigs,
+        "bands": bands,
+    }
+
+
+def analyze(df: pd.DataFrame, mode: str = "simple"):
+    """Analyze with selectable mode.
+
+    - mode="simple": Original engineering-friendly simplified version.
+    - mode="full": Inclusion-aware, extended signals variant.
+    """
+    if mode == "full":
+        return analyze_full(df)
+    # default path
+    return {
+        **analyze.__wrapped__(df)  # type: ignore[attr-defined]
+    }
+
+
+# Keep original analyze implementation bound for backward compatibility via __wrapped__
+analyze.__wrapped__ = lambda df: {
+    # replicate the original simplified call path
+    **(lambda _df: (
+        (lambda fr, pens, segs, pivots, bands, seg_sigs, df_local, piv_sigs, sigs: {
+            "fractals": fr,
+            "pens": pens,
+            "segments": segs,
+            "pivots": pivots,
+            "signals": sigs,
+            "bands": bands,
+        })(
+            fr := find_fractals(_df),
+            pens := build_pens(fr),
+            segs := build_segments(pens),
+            pivots := build_pivots(pens),
+            bands := annotate_pivot_bands(len(_df), pivots),
+            seg_sigs := segment_signals(segs),
+            df_local := pd.concat([_df.reset_index(drop=True).copy(), bands], axis=1),
+            piv_sigs := pivot_breakout_signals(df_local),
+            sigs := (lambda ss: ss.sort_values(["index", "signal"]).drop_duplicates(subset=["index"], keep="first").reset_index(drop=True) if not ss.empty else ss)(
+                pd.concat([seg_sigs, piv_sigs], ignore_index=True)
+            ),
+        )
+    ))(df)
+}

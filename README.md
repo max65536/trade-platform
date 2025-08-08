@@ -73,14 +73,27 @@ Trade Platform (ccxt + TA + Chan)
   - exchanges.py       ccxt封装
   - dataio.py          CSV读取/写入
   - indicators.py      技术指标
-  - chan.py            缠论核心（分型/笔/线段/中枢/信号）
+ - chan.py            缠论核心（分型/笔/线段/中枢/信号）
   - multiframe.py      多周期合成与信号过滤
   - backtest.py        回测引擎
  - plotting.py        可视化
   - cli.py             命令行入口
-  - pyproject.toml     PDM 项目配置（依赖/脚本）
+ - pyproject.toml     PDM 项目配置（依赖/脚本）
 
 说明
-- 缠论实现为工程化简化版本：分型/笔/线段/中枢（以笔价格区间交叠近似）与突破信号，便于在实盘/回测中稳定使用。
+- 缠论默认实现为工程化简化版本：分型/笔/线段/中枢（以笔价格区间交叠近似）与突破信号，便于在实盘/回测中稳定使用。
 - 多周期通过 merge_asof 对齐高周期上下文（方向/中枢带）到低周期，支持方向一致与高周期突破与最小延续长度过滤。
 - 回测为事件驱动、下根K线开盘成交的近似执行模型，用于快速验证策略逻辑。
+
+高级：缠论完整模式
+- 位置：`trade_platform/chan.py`
+- 能力：
+  - 合并K线（包含关系）
+  - 分型（基于合并K线）、严格交替成笔
+  - 三笔成段、笔价区间交叠构建中枢
+  - 信号扩展：线段拐点、枢纽突破、一/二买卖（回踩/回抽）、背驰（三买/三卖，基于 MACD 柱能量）
+- 用法（Python）：
+  - `from trade_platform import chan`
+  - `out = chan.analyze(df, mode="full")`
+  - 返回结构与简化模式一致（fractals/pens/segments/pivots/signals/bands），`signals` 含扩展信号：`buy2/sell2/buy3/sell3`
+  - CLI 仍默认使用简化模式（保持兼容），如需在 CLI 中开启完整模式可后续加开关。
