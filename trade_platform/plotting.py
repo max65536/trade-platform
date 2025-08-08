@@ -9,7 +9,8 @@ def _lazy_import_mpl():
     try:
         import matplotlib.pyplot as plt
         from matplotlib.collections import LineCollection
-        return plt, LineCollection
+        from matplotlib.lines import Line2D
+        return plt, LineCollection, Line2D
     except Exception as e:
         raise RuntimeError("matplotlib is required for plotting. Install with `pip install matplotlib`." ) from e
 
@@ -32,8 +33,10 @@ def plot_kline(
     label_pivots: bool = False,
     trades: Optional[pd.DataFrame] = None,
     label_trades: bool = True,
+    show_signals: bool = True,
+    show_faded_legend: bool = True,
 ):
-    plt, LineCollection = _lazy_import_mpl()
+    plt, LineCollection, Line2D = _lazy_import_mpl()
     import numpy as np
 
     df = df.reset_index(drop=True)
@@ -126,17 +129,25 @@ def plot_kline(
                 ax.text(midx, midy, f"{s.direction}", color=seg_c, fontsize=8, ha="center", va="bottom", alpha=0.9)
 
     # Signals (faded first for layering)
-    if signals_faded is not None and not signals_faded.empty:
+    if show_signals and signals_faded is not None and not signals_faded.empty:
         buys_f = signals_faded[signals_faded.signal == "buy"]["index"].astype(int)
         sells_f = signals_faded[signals_faded.signal == "sell"]["index"].astype(int)
         ax.scatter(buys_f, df.loc[buys_f, "low"] * 0.999, marker="^", color=up_c, s=28, alpha=0.25)
         ax.scatter(sells_f, df.loc[sells_f, "high"] * 1.001, marker="v", color=dn_c, s=28, alpha=0.25)
-    if signals is not None and not signals.empty:
+    if show_signals and signals is not None and not signals.empty:
         buys = signals[signals.signal == "buy"]["index"].astype(int)
         sells = signals[signals.signal == "sell"]["index"].astype(int)
         ax.scatter(buys, df.loc[buys, "low"] * 0.999, marker="^", color=up_c, s=40, label="buy")
         ax.scatter(sells, df.loc[sells, "high"] * 1.001, marker="v", color=dn_c, s=40, label="sell")
-        ax.legend(loc="upper left")
+        # Optionally add a legend entry for filtered (faded) signals
+        if show_faded_legend and signals_faded is not None and not signals_faded.empty:
+            filtered_proxy = Line2D([0], [0], marker='^', linestyle='None', color='none', markerfacecolor=up_c, alpha=0.25, markersize=6, label='filtered')
+            handles, labels = ax.get_legend_handles_labels()
+            handles.append(filtered_proxy)
+            labels.append('filtered')
+            ax.legend(handles, labels, loc="upper left")
+        else:
+            ax.legend(loc="upper left")
 
     # Pivot labels (if objects provided)
     if label_pivots and pivots:

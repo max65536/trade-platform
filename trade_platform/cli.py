@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import os
 from datetime import datetime, timezone
+from typing import List
 
 import pandas as pd
 
@@ -40,6 +41,69 @@ def cmd_fetch(args: argparse.Namespace):
     os.makedirs(os.path.dirname(args.output), exist_ok=True)
     cf.to_csv(args.output)
     print(f"Saved {len(cf.df)} candles to {args.output}")
+
+
+def _read_list_file(path: str) -> List[str]:
+    items: List[str] = []
+    with open(path, "r", encoding="utf-8") as f:
+        for line in f:
+            t = line.strip()
+            if not t or t.startswith("#"):
+                continue
+            items.append(t)
+    return items
+
+
+def cmd_batch(args: argparse.Namespace):
+    ex = ExchangeClient(args.exchange)
+    ex.load_markets()
+    since = _parse_date(args.since) if args.since else None
+
+    # gather symbols
+    symbols: List[str] = []
+    if args.symbols:
+        symbols.extend(args.symbols)
+    if args.symbols_file:
+        symbols.extend(_read_list_file(args.symbols_file))
+    symbols = [s for s in (sym.strip() for sym in symbols) if s]
+    if not symbols:
+        raise SystemExit("No symbols provided. Use --symbols or --symbols-file.")
+
+    # gather timeframes
+    tfs: List[str] = []
+    if args.timeframes:
+        tfs.extend(args.timeframes)
+    if args.timeframe:
+        tfs.append(args.timeframe)
+    tfs = [t for t in (tf.strip() for tf in tfs) if t]
+    if not tfs:
+        raise SystemExit("No timeframe provided. Use --timeframes or --timeframe.")
+
+    out_dir = args.output_dir
+    os.makedirs(out_dir, exist_ok=True)
+    total = 0
+    for sym in symbols:
+        for tf in tfs:
+            try:
+                ohlcv = ex.fetch_ohlcv_all(
+                    symbol=sym,
+                    timeframe=tf,
+                    since=since,
+                    limit=args.limit,
+                    max_bars=args.max_bars,
+                )
+                cf = CandleFrame.from_ohlcv(ohlcv)
+                sym_noslash = sym.replace("/", "")
+                fname = args.name_template.format(symbol=sym, symbol_noslash=sym_noslash, timeframe=tf)
+                out_path = os.path.join(out_dir, fname)
+                os.makedirs(os.path.dirname(out_path), exist_ok=True)
+                cf.to_csv(out_path)
+                total += len(cf.df)
+                print(f"Saved {len(cf.df)} candles: {sym} {tf} -> {out_path}")
+            except Exception as e:
+                print(f"Error fetching {sym} {tf}: {e}")
+                continue
+    print(f"Batch completed. Total candles saved: {total}")
 
 
 def cmd_analyze(args: argparse.Namespace):
@@ -291,6 +355,8 @@ def cmd_plot(args: argparse.Namespace):
         label_segments=args.label_segments,
         label_pivots=args.label_pivots,
         trades=trades,
+        show_signals=not args.hide_signals,
+        show_faded_legend=True,
     )
 
 def build_parser():
@@ -306,6 +372,23 @@ def build_parser():
     f.add_argument("--max-bars", type=int, default=None)
     f.add_argument("--output", required=True)
     f.set_defaults(func=cmd_fetch)
+
+    bf = sub.add_parser("batch", help="Batch fetch OHLCV for multiple symbols/timeframes")
+    bf.add_argument("--exchange", required=True)
+    bf.add_argument("--symbols", nargs="+", default=None, help="Space-separated symbols, e.g., BTC/USDT ETH/USDT")
+    bf.add_argument("--symbols-file", default=None, help="Path to file with one symbol per line")
+    bf.add_argument("--timeframes", nargs="+", default=None, help="Space-separated timeframes, e.g., 1h 4h 1d")
+    bf.add_argument("--timeframe", default=None, help="Single timeframe if --timeframes omitted")
+    bf.add_argument("--since", default=None, help="ISO date, e.g., 2023-01-01")
+    bf.add_argument("--limit", type=int, default=500)
+    bf.add_argument("--max-bars", type=int, default=None)
+    bf.add_argument("--output-dir", default="data", help="Output folder (default: data)")
+    bf.add_argument(
+        "--name-template",
+        default="{symbol_noslash}-{timeframe}.csv",
+        help="Filename template; tokens: {symbol}, {symbol_noslash}, {timeframe}",
+    )
+    bf.set_defaults(func=cmd_batch)
 
     a = sub.add_parser("analyze", help="Run indicators + Chan analysis")
     a.add_argument("--input", required=True)
@@ -357,6 +440,7 @@ def build_parser():
     # optional trade overlay: reuse backtest params
     g.add_argument("--plot-trades", action="store_true", help="Compute and overlay trades from current signals")
     g.add_argument("--fade-filtered", action="store_true", help="Fade signals filtered out by RSI/ATR thresholds")
+    g.add_argument("--hide-signals", action="store_true", help="Hide all signal markers; useful when only trades are wanted")
     g.add_argument("--fee", type=float, default=0.0005)
     g.add_argument("--rsi-min", type=float, default=None)
     g.add_argument("--rsi-max", type=float, default=None)

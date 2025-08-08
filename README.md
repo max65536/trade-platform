@@ -30,6 +30,9 @@ Trade Platform (ccxt + TA + Chan)
 - 可视化（主题/标注可选）：
   - `pdm run trade-cli plot --input data/BTCUSDT-4h-mtf.csv --use-mtf-bands --use-mtf-signals --theme dark --label-segments --save out/4h-mtf.png`
 
+- 批量拉取：
+  - `pdm run trade-cli batch --exchange binance --symbols BTC/USDT ETH/USDT --timeframes 4h 1d --output-dir data/spot --name-template {symbol_noslash}-{timeframe}.csv --max-bars 5000`
+
 测试
 - 安装开发依赖：`pdm install -G dev`
 - 运行：`pdm run pytest -q`
@@ -47,6 +50,7 @@ Trade Platform (ccxt + TA + Chan)
 - `pdm run bt_meanrev`：1h 均值回归回测
 - `pdm run mtf_momentum_4h_1d`：4h+1d 动量（方向+中枢突破）
 - `pdm run mtf_meanrev_4h_1d`：4h+1d 均值回归（方向一致）
+- `pdm run pipeline -- --exchange binance --symbols BTC/USDT --lower-tf 4h --higher-tf 1d --out-dir runs --require-htf-breakout --min-htf-run 3 --rsi-min 55 --min-atr-pct 0.004 --stop-pct 0.02 --tp-pct 0.04`
 
 目录结构
 - trade_platform/

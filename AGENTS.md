@@ -19,6 +19,7 @@
 - Install dev deps: `pdm install -G dev`
 - CLI (via console script):
   - Fetch: `pdm run trade-cli fetch --exchange binance --symbol BTC/USDT --timeframe 1h --output data/BTCUSDT-1h.csv`
+  - Batch: `pdm run trade-cli batch --exchange binance --symbols BTC/USDT ETH/USDT --timeframes 4h 1d --output-dir data/spot --name-template {symbol_noslash}-{timeframe}.csv`
   - Analyze: `pdm run trade-cli analyze --input data/BTCUSDT-1h.csv --out data/annotated.csv`
   - Backtest: `pdm run trade-cli backtest --input data/BTCUSDT-1h.csv`
   - MTF (4h+1d): `pdm run trade-cli mtf --lower-input data/BTCUSDT-4h.csv --higher-input data/BTCUSDT-1d.csv --out data/BTCUSDT-4h-mtf.csv --require-htf-breakout --min-htf-run 3 --run-backtest`
@@ -31,6 +32,8 @@
   - Mean-reversion 1h: `pdm run bt_meanrev`
   - MTF 4h+1d momentum: `pdm run mtf_momentum_4h_1d`
   - MTF 4h+1d mean-reversion: `pdm run mtf_meanrev_4h_1d`
+- End-to-end pipeline:
+  - `pdm run pipeline -- --exchange binance --symbols BTC/USDT ETH/USDT --lower-tf 4h --higher-tf 1d --out-dir runs --require-htf-breakout --min-htf-run 3`
 
 ## Coding Style & Naming Conventions
 - Python 3.10+, PEP 8, 4-space indentation
