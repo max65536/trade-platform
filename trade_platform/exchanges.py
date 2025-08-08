@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import time
-from typing import List, Optional
+from typing import List, Optional, Dict
+import os
 
 import ccxt  # type: ignore
 
@@ -9,7 +10,15 @@ import ccxt  # type: ignore
 class ExchangeClient:
     """Lightweight ccxt wrapper for unified OHLCV fetching with rate-limit handling."""
 
-    def __init__(self, exchange: str, api_key: Optional[str] = None, secret: Optional[str] = None, password: Optional[str] = None):
+    def __init__(
+        self,
+        exchange: str,
+        api_key: Optional[str] = None,
+        secret: Optional[str] = None,
+        password: Optional[str] = None,
+        use_env_proxy: bool = True,
+        proxies: Optional[Dict[str, str]] = None,
+    ):
         ex_class = getattr(ccxt, exchange)
         self.exchange = ex_class({
             "apiKey": api_key or "",
@@ -18,6 +27,28 @@ class ExchangeClient:
             "enableRateLimit": True,
             "timeout": 30000,
         })
+        # Proxy configuration
+        # Priority: explicit 'proxies' arg -> TRADE_* env -> rely on requests' HTTP(S)_PROXY env
+        if proxies:
+            self.exchange.proxies = proxies
+        elif use_env_proxy:
+            http_proxy = os.environ.get("TRADE_HTTP_PROXY")
+            https_proxy = os.environ.get("TRADE_HTTPS_PROXY")
+            no_proxy = os.environ.get("TRADE_NO_PROXY")
+            if http_proxy or https_proxy:
+                self.exchange.proxies = {
+                    k: v
+                    for k, v in (
+                        ("http", http_proxy),
+                        ("https", https_proxy or http_proxy),
+                    )
+                    if v
+                }
+            if no_proxy:
+                # ensure NO_PROXY is visible to requests
+                os.environ["NO_PROXY"] = (
+                    no_proxy if not os.environ.get("NO_PROXY") else f"{no_proxy},{os.environ['NO_PROXY']}"
+                )
 
     def load_markets(self):
         return self.exchange.load_markets()
@@ -60,4 +91,3 @@ class ExchangeClient:
             if len(batch) < limit:
                 break
         return results
-
