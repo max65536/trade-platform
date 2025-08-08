@@ -16,11 +16,18 @@ def rsi(series: pd.Series, length: int = 14) -> pd.Series:
     delta = series.diff()
     up = delta.clip(lower=0)
     down = -delta.clip(upper=0)
-    roll_up = up.ewm(alpha=1/length, adjust=False).mean()
-    roll_down = down.ewm(alpha=1/length, adjust=False).mean()
-    rs = roll_up / (roll_down.replace(0, np.nan))
+    avg_gain = up.ewm(alpha=1 / length, adjust=False, min_periods=length).mean()
+    avg_loss = down.ewm(alpha=1 / length, adjust=False, min_periods=length).mean()
+
+    rs = avg_gain / avg_loss.replace(0, np.nan)
     rsi_val = 100 - (100 / (1 + rs))
-    return rsi_val.fillna(0)
+
+    # Handle edge cases explicitly
+    rsi_val = rsi_val.where(~((avg_loss == 0) & (avg_gain > 0)), 100.0)
+    rsi_val = rsi_val.where(~((avg_gain == 0) & (avg_loss > 0)), 0.0)
+    rsi_val = rsi_val.where(~((avg_gain == 0) & (avg_loss == 0)), 50.0)
+
+    return rsi_val
 
 
 def true_range(df: pd.DataFrame) -> pd.Series:
@@ -45,4 +52,3 @@ def macd(series: pd.Series, fast: int = 12, slow: int = 26, signal: int = 9):
     signal_line = ema(macd_line, signal)
     hist = macd_line - signal_line
     return macd_line, signal_line, hist
-
