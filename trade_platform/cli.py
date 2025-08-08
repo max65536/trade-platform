@@ -11,6 +11,7 @@ from .dataio import CandleFrame
 from . import indicators as ta
 from . import chan
 from .backtest import simple_execute
+from . import multiframe as mtf
 
 
 def _parse_date(s: str) -> int:
@@ -83,6 +84,52 @@ def cmd_backtest(args: argparse.Namespace):
         print(f"- {k}: {v}")
 
 
+def cmd_mtf(args: argparse.Namespace):
+    # load lower/higher
+    lcf = CandleFrame.read_csv(args.lower_input)
+    hcf = CandleFrame.read_csv(args.higher_input)
+    ldf = lcf.df.copy().reset_index(drop=True)
+    hdf = hcf.df.copy().reset_index(drop=True)
+
+    # analyze both frames
+    lo = chan.analyze(ldf)
+    ho = chan.analyze(hdf)
+
+    # align HTF context onto LTF
+    htf_ctx = mtf.align_htf_to_ltf(ldf, hdf, ho["segments"], ho["bands"])
+    # add columns to lower df
+    for col in htf_ctx.columns:
+        ldf[col] = htf_ctx[col].values
+
+    # base signals from LTF
+    base_sigs = lo["signals"]
+    filt_sigs = mtf.filter_signals_with_htf(base_sigs, ldf)
+
+    # annotate both sets of signals into df for inspection
+    if not base_sigs.empty:
+        ldf.loc[base_sigs["index"], "signal_base"] = base_sigs["signal"].values
+    if not filt_sigs.empty:
+        ldf.loc[filt_sigs["index"], "signal_mtf"] = filt_sigs["signal"].values
+
+    print(
+        f"LTF: Fractals {len(lo['fractals'])}, Pens {len(lo['pens'])}, Segments {len(lo['segments'])}, Pivots {len(lo['pivots'])}, Signals {len(base_sigs)}"
+    )
+    print(
+        f"HTF: Fractals {len(ho['fractals'])}, Pens {len(ho['pens'])}, Segments {len(ho['segments'])}, Pivots {len(ho['pivots'])}"
+    )
+    print(f"MTF-filtered signals: {len(filt_sigs)}")
+
+    if args.out:
+        os.makedirs(os.path.dirname(args.out), exist_ok=True)
+        ldf.to_csv(args.out, index=False)
+        print(f"Annotated LTF saved to {args.out}")
+
+    if args.run_backtest:
+        res = simple_execute(ldf, filt_sigs, fee_rate=args.fee)
+        print("Backtest (MTF) stats:")
+        for k, v in res.stats.items():
+            print(f"- {k}: {v}")
+
 def build_parser():
     p = argparse.ArgumentParser(description="Trade platform CLI (ccxt + TA + Chan)")
     sub = p.add_subparsers(dest="cmd")
@@ -108,6 +155,14 @@ def build_parser():
     b.add_argument("--end", default=None)
     b.add_argument("--fee", type=float, default=0.0005)
     b.set_defaults(func=cmd_backtest)
+
+    m = sub.add_parser("mtf", help="Multi-timeframe: align HTF context to LTF and optional backtest")
+    m.add_argument("--lower-input", required=True, help="Lower timeframe CSV path")
+    m.add_argument("--higher-input", required=True, help="Higher timeframe CSV path")
+    m.add_argument("--out", default=None, help="Write annotated LTF CSV")
+    m.add_argument("--run-backtest", action="store_true", help="Run backtest on filtered LTF signals")
+    m.add_argument("--fee", type=float, default=0.0005)
+    m.set_defaults(func=cmd_mtf)
 
     return p
 
