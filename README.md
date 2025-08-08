@@ -42,8 +42,9 @@ Trade Platform (ccxt + TA + Chan)
   - chan.py            缠论核心（分型/笔/线段/中枢/信号）
   - multiframe.py      多周期合成与信号过滤
   - backtest.py        回测引擎
-  - plotting.py        可视化
+ - plotting.py        可视化
   - cli.py             命令行入口
+  - pyproject.toml     PDM 项目配置（依赖/脚本）
 
 说明
 - 缠论实现为工程化简化版本：分型/笔/线段/中枢（以笔价格区间交叠近似）与突破信号，便于在实盘/回测中稳定使用。

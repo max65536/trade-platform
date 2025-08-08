@@ -10,9 +10,9 @@
   - `backtest.py`: basic executor + stats
   - `plotting.py`: matplotlib visualizations
   - `cli.py`: CLI entry (`python -m trade_platform.cli`)
-- `requirements.txt`: Python deps (matplotlib included)
 - `README.md`: quickstart and examples
 - `data/`: local CSVs (optional)
+ - `pyproject.toml`: PDM project config and deps
 
 ## Build, Test, and Development Commands (PDM)
 - Install runtime deps: `pdm install`
