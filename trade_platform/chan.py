@@ -258,12 +258,12 @@ def pivot_breakout_signals(df: pd.DataFrame) -> pd.DataFrame:
         if pd.notna(ph[i]) or pd.notna(ph[i - 1]):
             h_prev = ph[i - 1] if pd.notna(ph[i - 1]) else ph[i]
             if pd.notna(h_prev) and close[i - 1] <= h_prev and close[i] > h_prev:
-                rows.append({"index": i, "signal": "buy", "price": float(close[i])})
+                rows.append({"index": i, "signal": "buy", "price": float(close[i]), "kind": "buy1"})
         # breakout down
         if pd.notna(pl[i]) or pd.notna(pl[i - 1]):
             l_prev = pl[i - 1] if pd.notna(pl[i - 1]) else pl[i]
             if pd.notna(l_prev) and close[i - 1] >= l_prev and close[i] < l_prev:
-                rows.append({"index": i, "signal": "sell", "price": float(close[i])})
+                rows.append({"index": i, "signal": "sell", "price": float(close[i]), "kind": "sell1"})
     if not rows:
         return pd.DataFrame(columns=["index", "signal", "price"])
     return pd.DataFrame(rows).drop_duplicates(subset=["index", "signal"]).sort_values("index").reset_index(drop=True)
@@ -470,12 +470,12 @@ def pivot_retest_signals(df_with_bands: pd.DataFrame) -> pd.DataFrame:
         # buy2: was above, dipped below band then reclaimed
         if pd.notna(ph[i]) and pd.notna(ph[i - 1]):
             if above and close[i - 1] < ph[i - 1] and close[i] > ph[i]:
-                rows.append({"index": i, "signal": "buy2", "price": float(close[i])})
+                rows.append({"index": i, "signal": "buy", "price": float(close[i]), "kind": "buy2"})
                 above = False
         # sell2: was below, rallied above then lost it
         if pd.notna(pl[i]) and pd.notna(pl[i - 1]):
             if below and close[i - 1] > pl[i - 1] and close[i] < pl[i]:
-                rows.append({"index": i, "signal": "sell2", "price": float(close[i])})
+                rows.append({"index": i, "signal": "sell", "price": float(close[i]), "kind": "sell2"})
                 below = False
     if not rows:
         return pd.DataFrame(columns=["index", "signal", "price"])
@@ -510,14 +510,14 @@ def divergence_signals(df: pd.DataFrame, segments: List[Segment]) -> pd.DataFram
             if last_down is not None:
                 prev_idx, prev_price, prev_h = last_down
                 if price < prev_price and h > prev_h:
-                    rows.append({"index": idx, "signal": "buy3", "price": price})
+                    rows.append({"index": idx, "signal": "buy", "price": price, "kind": "buy3"})
             last_down = (idx, price, h)
         else:
             # potential sell3 at end of up segment
             if last_up is not None:
                 prev_idx, prev_price, prev_h = last_up
                 if price > prev_price and h < prev_h:
-                    rows.append({"index": idx, "signal": "sell3", "price": price})
+                    rows.append({"index": idx, "signal": "sell", "price": price, "kind": "sell3"})
             last_up = (idx, price, h)
     if not rows:
         return pd.DataFrame(columns=["index", "signal", "price"])
@@ -546,6 +546,8 @@ def analyze_full(df: pd.DataFrame):
     df_local = pd.concat([df_local, bands], axis=1)
 
     seg_sigs = segment_signals(segs)
+    if not seg_sigs.empty:
+        seg_sigs = seg_sigs.assign(kind="turn")
     piv_sigs = pivot_breakout_signals(df_local)
     retest = pivot_retest_signals(df_local)
     div = divergence_signals(df_local, segs)
@@ -567,18 +569,14 @@ def analyze_full(df: pd.DataFrame):
     }
 
 
-def analyze(df: pd.DataFrame, mode: str = "simple"):
-    """Analyze with selectable mode.
+def analyze(df: pd.DataFrame, mode: str | None = None):
+    """Analyze with full Chan workflow by default.
 
-    - mode="simple": Original engineering-friendly simplified version.
-    - mode="full": Inclusion-aware, extended signals variant.
+    For backward-compatibility, passing mode="simple" runs the prior simplified logic.
     """
-    if mode == "full":
-        return analyze_full(df)
-    # default path
-    return {
-        **analyze.__wrapped__(df)  # type: ignore[attr-defined]
-    }
+    if mode == "simple":
+        return analyze.__wrapped__(df)  # type: ignore[attr-defined]
+    return analyze_full(df)
 
 
 # Keep original analyze implementation bound for backward compatibility via __wrapped__

@@ -3,8 +3,8 @@ Trade Platform (ccxt + TA + Chan)
 一个基于 ccxt 的最小可用交易/研究骨架：
 - 统一拉取并存储K线数据（CSV）
 - 常见技术指标（SMA/EMA/RSI/ATR/MACD）
-- 缠论分析（简化）：分型→笔→线段→中枢（Pivot Zone）
-- 信号：线段拐点 + 中枢突破（支持合并与去重）
+- 缠论分析（完整）：包含关系→分型→笔→线段→中枢（Pivot Zone）
+- 信号：线段拐点 + 枢纽突破/回测/背驰（买卖1/2/3，含 kind 标注）
 - 多周期合成（MTF）：将高周期线段/中枢对齐到低周期，按方向与突破过滤信号
 - 回测器与可视化（matplotlib）
 - 命令行工具
@@ -29,6 +29,8 @@ Trade Platform (ccxt + TA + Chan)
 
 - 可视化（主题/标注可选）：
   - `pdm run trade-cli plot --input data/BTCUSDT-4h-mtf.csv --use-mtf-bands --use-mtf-signals --theme dark --label-segments --save out/4h-mtf.png`
+  - 说明：若 `signals` 含 `kind` 列，会按类别自动渲染：
+    - `buy1/sell1` 实心箭头；`buy2/sell2` 实心箭头（带带宽色描边）；`buy3/sell3` 空心箭头（彩色描边）；`turn` 为 “x” 标记；并在箭头附近标注 1/2/3。
 
 - 批量拉取：
   - `pdm run trade-cli batch --exchange binance --symbols BTC/USDT ETH/USDT --timeframes 4h 1d --output-dir data/spot --name-template {symbol_noslash}-{timeframe}.csv --max-bars 5000`
@@ -81,7 +83,7 @@ Trade Platform (ccxt + TA + Chan)
  - pyproject.toml     PDM 项目配置（依赖/脚本）
 
 说明
-- 缠论默认实现为工程化简化版本：分型/笔/线段/中枢（以笔价格区间交叠近似）与突破信号，便于在实盘/回测中稳定使用。
+- 缠论分析默认采用工程化完整版本（包含关系合并、严格分笔、三笔成段、中枢与三类买卖点），同时保留简化实现用于兼容。
 - 多周期通过 merge_asof 对齐高周期上下文（方向/中枢带）到低周期，支持方向一致与高周期突破与最小延续长度过滤。
 - 回测为事件驱动、下根K线开盘成交的近似执行模型，用于快速验证策略逻辑。
 
@@ -91,9 +93,8 @@ Trade Platform (ccxt + TA + Chan)
   - 合并K线（包含关系）
   - 分型（基于合并K线）、严格交替成笔
   - 三笔成段、笔价区间交叠构建中枢
-  - 信号扩展：线段拐点、枢纽突破、一/二买卖（回踩/回抽）、背驰（三买/三卖，基于 MACD 柱能量）
+  - 信号扩展：线段拐点、枢纽突破（一买/一卖）、回测（二买/二卖）、背驰（三买/三卖，基于 MACD 柱能量）
 - 用法（Python）：
   - `from trade_platform import chan`
-  - `out = chan.analyze(df, mode="full")`
-  - 返回结构与简化模式一致（fractals/pens/segments/pivots/signals/bands），`signals` 含扩展信号：`buy2/sell2/buy3/sell3`
-  - CLI 仍默认使用简化模式（保持兼容），如需在 CLI 中开启完整模式可后续加开关。
+  - `out = chan.analyze(df)`（默认完整模式）
+  - 返回结构：`fractals/pens/segments/pivots/signals/bands`；`signals` 含三类买卖点：`buy1/sell1`（突破）、`buy2/sell2`（回测）、`buy3/sell3`（背驰），其中信号的交易方向仍为 `signal=buy/sell`，类别标在 `kind` 列。

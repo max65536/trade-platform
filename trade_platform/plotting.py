@@ -135,19 +135,78 @@ def plot_kline(
         ax.scatter(buys_f, df.loc[buys_f, "low"] * 0.999, marker="^", color=up_c, s=28, alpha=0.25)
         ax.scatter(sells_f, df.loc[sells_f, "high"] * 1.001, marker="v", color=dn_c, s=28, alpha=0.25)
     if show_signals and signals is not None and not signals.empty:
-        buys = signals[signals.signal == "buy"]["index"].astype(int)
-        sells = signals[signals.signal == "sell"]["index"].astype(int)
-        ax.scatter(buys, df.loc[buys, "low"] * 0.999, marker="^", color=up_c, s=40, label="buy")
-        ax.scatter(sells, df.loc[sells, "high"] * 1.001, marker="v", color=dn_c, s=40, label="sell")
-        # Optionally add a legend entry for filtered (faded) signals
-        if show_faded_legend and signals_faded is not None and not signals_faded.empty:
-            filtered_proxy = Line2D([0], [0], marker='^', linestyle='None', color='none', markerfacecolor=up_c, alpha=0.25, markersize=6, label='filtered')
+        # If kind column is present, render 1/2/3-class signals differently
+        if "kind" in signals.columns:
             handles, labels = ax.get_legend_handles_labels()
-            handles.append(filtered_proxy)
-            labels.append('filtered')
-            ax.legend(handles, labels, loc="upper left")
+            def draw_group(mask, y_ref, marker, color, size, label=None, edge=None, lw=0.8):
+                idxs = signals[mask]["index"].astype(int)
+                if idxs.empty:
+                    return
+                y = df.loc[idxs, y_ref]
+                sc = ax.scatter(
+                    idxs,
+                    y,
+                    marker=marker,
+                    s=size,
+                    c=color,
+                    edgecolors=edge if edge else None,
+                    linewidths=lw if edge else None,
+                    label=label,
+                )
+                if label:
+                    handles.append(sc)
+                    labels.append(label)
+                return idxs
+
+            def annotate_group(idxs, y_ref, text, color, dy=0.0):
+                if idxs is None or len(idxs) == 0:
+                    return
+                for i in idxs:
+                    yi = float(df.loc[i, y_ref]) if i in df.index else None
+                    if yi is None:
+                        continue
+                    ax.text(i, yi + dy, text, color=color, fontsize=7, ha="center", va="center", alpha=0.9)
+
+            # Buys
+            b1 = draw_group((signals.signal == "buy") & (signals.kind == "buy1"), "low", "^", up_c, 50, label="buy1")
+            b2 = draw_group((signals.signal == "buy") & (signals.kind == "buy2"), "low", "^", up_c, 40, label="buy2", edge=band_c)
+            b3 = draw_group((signals.signal == "buy") & (signals.kind == "buy3"), "low", "^", "none", 60, label="buy3", edge=up_c, lw=1.2)
+            # Sells
+            s1 = draw_group((signals.signal == "sell") & (signals.kind == "sell1"), "high", "v", dn_c, 50, label="sell1")
+            s2 = draw_group((signals.signal == "sell") & (signals.kind == "sell2"), "high", "v", dn_c, 40, label="sell2", edge=band_c)
+            s3 = draw_group((signals.signal == "sell") & (signals.kind == "sell3"), "high", "v", "none", 60, label="sell3", edge=dn_c, lw=1.2)
+            # Segment turns (neutral marker)
+            draw_group(signals.kind == "turn", "close", "x", seg_c, 40, label="turn")
+
+            # Numeric annotations near markers
+            annotate_group(b1, "low", "1", up_c, dy=-(df["close"].median() * 0.0005))
+            annotate_group(b2, "low", "2", up_c, dy=-(df["close"].median() * 0.0005))
+            annotate_group(b3, "low", "3", up_c, dy=-(df["close"].median() * 0.0005))
+            annotate_group(s1, "high", "1", dn_c, dy=(df["close"].median() * 0.0005))
+            annotate_group(s2, "high", "2", dn_c, dy=(df["close"].median() * 0.0005))
+            annotate_group(s3, "high", "3", dn_c, dy=(df["close"].median() * 0.0005))
+
+            # Optionally add a legend entry for filtered (faded) signals
+            if show_faded_legend and signals_faded is not None and not signals_faded.empty:
+                filtered_proxy = Line2D([0], [0], marker='^', linestyle='None', color='none', markerfacecolor=up_c, alpha=0.25, markersize=6, label='filtered')
+                handles.append(filtered_proxy)
+                labels.append('filtered')
+            if handles and labels:
+                ax.legend(handles, labels, loc="upper left")
         else:
-            ax.legend(loc="upper left")
+            # Fallback simple rendering if kind is absent
+            buys = signals[signals.signal == "buy"]["index"].astype(int)
+            sells = signals[signals.signal == "sell"]["index"].astype(int)
+            ax.scatter(buys, df.loc[buys, "low"] * 0.999, marker="^", color=up_c, s=40, label="buy")
+            ax.scatter(sells, df.loc[sells, "high"] * 1.001, marker="v", color=dn_c, s=40, label="sell")
+            if show_faded_legend and signals_faded is not None and not signals_faded.empty:
+                filtered_proxy = Line2D([0], [0], marker='^', linestyle='None', color='none', markerfacecolor=up_c, alpha=0.25, markersize=6, label='filtered')
+                handles, labels = ax.get_legend_handles_labels()
+                handles.append(filtered_proxy)
+                labels.append('filtered')
+                ax.legend(handles, labels, loc="upper left")
+            else:
+                ax.legend(loc="upper left")
 
     # Pivot labels (if objects provided)
     if label_pivots and pivots:
