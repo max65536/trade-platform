@@ -4,3 +4,4 @@ numpy>=1.24
 # 可选：如需更多指标
 # pandas_ta>=0.3.14b0
 matplotlib>=3.7
+pytest>=7.0
