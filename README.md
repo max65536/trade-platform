@@ -33,6 +33,22 @@ Trade Platform (ccxt + TA + Chan)
 - 批量拉取：
   - `pdm run trade-cli batch --exchange binance --symbols BTC/USDT ETH/USDT --timeframes 4h 1d --output-dir data/spot --name-template {symbol_noslash}-{timeframe}.csv --max-bars 5000`
 
+网络代理（Proxy）
+- 说明：`trade_platform/exchanges.py` 已支持代理，优先级为 显式 `proxies` 参数（内部用） > `TRADE_*` 环境变量 > 系统级 `HTTP(S)_PROXY` 环境变量（requests 默认）。
+- 推荐：使用 `TRADE_HTTP_PROXY` / `TRADE_HTTPS_PROXY` / `TRADE_NO_PROXY` 环境变量，或直接使用系统 `HTTP_PROXY` / `HTTPS_PROXY` / `NO_PROXY`。
+- Linux/macOS 示例：
+  - 一次性运行：
+    - `TRADE_HTTP_PROXY=http://127.0.0.1:7890 TRADE_HTTPS_PROXY=http://127.0.0.1:7890 pdm run trade-cli fetch --exchange binance --symbol BTC/USDT --timeframe 1h --output data/BTCUSDT-1h.csv`
+  - 临时导出：
+    - `export TRADE_HTTP_PROXY=http://127.0.0.1:7890`
+    - `export TRADE_HTTPS_PROXY=http://127.0.0.1:7890`
+    - 可选跳过域：`export TRADE_NO_PROXY=localhost,127.0.0.1`
+- Windows PowerShell 示例：
+  - `$env:TRADE_HTTP_PROXY = 'http://127.0.0.1:7890'`
+  - `$env:TRADE_HTTPS_PROXY = 'http://127.0.0.1:7890'`
+  - 可选：`$env:TRADE_NO_PROXY = 'localhost,127.0.0.1'`
+- 说明：如未设置 `TRADE_*`，requests 会自动读取系统级 `HTTP_PROXY` / `HTTPS_PROXY` / `NO_PROXY`。
+
 测试
 - 安装开发依赖：`pdm install -G dev`
 - 运行：`pdm run pytest -q`
