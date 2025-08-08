@@ -48,13 +48,20 @@ def cmd_analyze(args: argparse.Namespace):
     df["atr14"] = ta.atr(df, 14)
     out = chan.analyze(df)
     sigs = out["signals"]
+    # annotate pivot bands into output
+    bands = out.get("bands")
+    if bands is not None and not bands.empty:
+        for col in bands.columns:
+            df[col] = bands[col].values
     if not sigs.empty:
         df.loc[sigs["index"], "signal"] = sigs["signal"].values
     if args.out:
         os.makedirs(os.path.dirname(args.out), exist_ok=True)
         df.to_csv(args.out, index=False)
         print(f"Annotated data saved to {args.out}")
-    print(f"Fractals: {len(out['fractals'])}, Pens: {len(out['pens'])}, Segments: {len(out['segments'])}, Signals: {len(sigs)}")
+    print(
+        f"Fractals: {len(out['fractals'])}, Pens: {len(out['pens'])}, Segments: {len(out['segments'])}, Pivots: {len(out['pivots'])}, Signals: {len(sigs)}"
+    )
 
 
 def cmd_backtest(args: argparse.Namespace):
@@ -116,4 +123,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
