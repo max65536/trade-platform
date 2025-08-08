@@ -14,6 +14,7 @@ from .backtest import simple_execute
 from . import multiframe as mtf
 from . import plotting
 from . import strategy
+from .backtest import execute_with_risk
 
 
 def _parse_date(s: str) -> int:
@@ -221,6 +222,60 @@ def cmd_plot(args: argparse.Namespace):
             syms = s_col.values
             signals = pd.DataFrame({"index": idxs, "signal": syms, "price": df.loc[idxs, "close"].values})
 
+    # Compute base signals for fading / trades if needed
+    base_signals = None
+    if args.fade_filtered or args.plot_trades:
+        if args.use_mtf_signals and "signal_mtf" in df.columns:
+            s_col = df["signal_mtf"].dropna()
+            if not s_col.empty:
+                idxs = s_col.index.values
+                syms = s_col.values
+                base_signals = pd.DataFrame({"index": idxs, "signal": syms, "price": df.loc[idxs, "close"].values})
+        if base_signals is None or base_signals.empty:
+            if 'out' not in locals():
+                out = chan.analyze(df)
+            base_signals = out.get("signals")
+
+    signals_faded = None
+    trades = None
+    if args.plot_trades or args.fade_filtered:
+        df_ind = strategy.ensure_indicators(df)
+        filtered = strategy.apply_signal_filters(
+            base_signals,
+            df_ind,
+            rsi_min=args.rsi_min,
+            rsi_max=args.rsi_max,
+            min_atr_pct=args.min_atr_pct,
+            max_atr_pct=args.max_atr_pct,
+        ) if base_signals is not None else None
+
+        if args.fade_filtered and base_signals is not None and filtered is not None:
+            # difference set by index+signal
+            key = ["index", "signal"]
+            signals_faded = base_signals.merge(filtered[key], on=key, how="left", indicator=True)
+            signals_faded = signals_faded[signals_faded["_merge"] == "left_only"].drop(columns=["_merge"]).reset_index(drop=True)
+
+        if args.plot_trades and filtered is not None:
+            # Use filtered as active signals and compute trades
+            if args.stop_pct is not None or args.tp_pct is not None:
+                res = execute_with_risk(
+                    df,
+                    filtered,
+                    fee_rate=args.fee,
+                    stop_loss_pct=args.stop_pct,
+                    take_profit_pct=args.tp_pct,
+                )
+            else:
+                res = simple_execute(df, filtered, fee_rate=args.fee)
+            trades = res.trades
+            if args.save_trades:
+                os.makedirs(os.path.dirname(args.save_trades), exist_ok=True)
+                trades.to_csv(args.save_trades, index=False)
+                print(f"Trades saved to {args.save_trades}")
+        # Update signals plotted to filtered if we have them
+        if filtered is not None:
+            signals = filtered
+
     plotting.plot_kline(
         df,
         out=args.save,
@@ -230,10 +285,12 @@ def cmd_plot(args: argparse.Namespace):
         pens=pens,
         segments=segments,
         signals=signals,
+        signals_faded=signals_faded,
         pivots=pivots,
         theme=args.theme,
         label_segments=args.label_segments,
         label_pivots=args.label_pivots,
+        trades=trades,
     )
 
 def build_parser():
@@ -297,6 +354,17 @@ def build_parser():
     g.add_argument("--theme", choices=["light", "dark", "minimal"], default="light")
     g.add_argument("--label-segments", action="store_true", help="Draw direction labels on segments")
     g.add_argument("--label-pivots", action="store_true", help="Draw pivot IDs (requires analysis-derived pivots)")
+    # optional trade overlay: reuse backtest params
+    g.add_argument("--plot-trades", action="store_true", help="Compute and overlay trades from current signals")
+    g.add_argument("--fade-filtered", action="store_true", help="Fade signals filtered out by RSI/ATR thresholds")
+    g.add_argument("--fee", type=float, default=0.0005)
+    g.add_argument("--rsi-min", type=float, default=None)
+    g.add_argument("--rsi-max", type=float, default=None)
+    g.add_argument("--min-atr-pct", type=float, default=None)
+    g.add_argument("--max-atr-pct", type=float, default=None)
+    g.add_argument("--stop-pct", type=float, default=None)
+    g.add_argument("--tp-pct", type=float, default=None)
+    g.add_argument("--save-trades", default=None, help="Save computed trades CSV to this path")
     g.set_defaults(func=cmd_plot)
 
     return p

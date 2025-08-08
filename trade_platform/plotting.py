@@ -25,10 +25,13 @@ def plot_kline(
     pens: Optional[List] = None,
     segments: Optional[List] = None,
     signals: Optional[pd.DataFrame] = None,
+    signals_faded: Optional[pd.DataFrame] = None,
     pivots: Optional[List] = None,
     theme: str = "light",
     label_segments: bool = False,
     label_pivots: bool = False,
+    trades: Optional[pd.DataFrame] = None,
+    label_trades: bool = True,
 ):
     plt, LineCollection = _lazy_import_mpl()
     import numpy as np
@@ -122,7 +125,12 @@ def plot_kline(
                 midy = (s.start_price + s.end_price) / 2
                 ax.text(midx, midy, f"{s.direction}", color=seg_c, fontsize=8, ha="center", va="bottom", alpha=0.9)
 
-    # Signals
+    # Signals (faded first for layering)
+    if signals_faded is not None and not signals_faded.empty:
+        buys_f = signals_faded[signals_faded.signal == "buy"]["index"].astype(int)
+        sells_f = signals_faded[signals_faded.signal == "sell"]["index"].astype(int)
+        ax.scatter(buys_f, df.loc[buys_f, "low"] * 0.999, marker="^", color=up_c, s=28, alpha=0.25)
+        ax.scatter(sells_f, df.loc[sells_f, "high"] * 1.001, marker="v", color=dn_c, s=28, alpha=0.25)
     if signals is not None and not signals.empty:
         buys = signals[signals.signal == "buy"]["index"].astype(int)
         sells = signals[signals.signal == "sell"]["index"].astype(int)
@@ -136,6 +144,21 @@ def plot_kline(
             midx = (z.start_idx + z.end_idx) / 2
             midy = (z.low + z.high) / 2
             ax.text(midx, midy, f"P{i+1}", color=band_c, fontsize=8, ha="center", va="center", alpha=0.9)
+
+    # Trades overlay
+    if trades is not None and not trades.empty:
+        for _, tr in trades.iterrows():
+            ei = int(tr["entry_idx"])
+            xi = int(tr["exit_idx"])
+            ep = float(tr["entry_px"])
+            xp = float(tr["exit_px"])
+            col = up_c if xp >= ep else dn_c
+            ax.plot([ei, xi], [ep, xp], color=col, linewidth=1.5, alpha=0.9)
+            ax.scatter([ei], [ep], color=up_c, marker="^", s=36)
+            ax.scatter([xi], [xp], color=dn_c, marker="x", s=36)
+            if label_trades and "ret" in tr:
+                pct = tr["ret"] * 100.0
+                ax.text(xi, xp, f"{pct:.1f}%", color=col, fontsize=8, ha="left", va="bottom")
 
     ax.set_xlim(-0.5, len(df) - 0.5)
     ax.set_xlabel("index", color=axis_c)

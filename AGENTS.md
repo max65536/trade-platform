@@ -26,6 +26,11 @@
 - Tests: `pdm run pytest -q`
 - Lint: `pdm run lint` (ruff)
 - Format: `pdm run format` (black) / `pdm run format-check`
+- Preset runs:
+  - Momentum 1h: `pdm run bt_momentum`
+  - Mean-reversion 1h: `pdm run bt_meanrev`
+  - MTF 4h+1d momentum: `pdm run mtf_momentum_4h_1d`
+  - MTF 4h+1d mean-reversion: `pdm run mtf_meanrev_4h_1d`
 
 ## Coding Style & Naming Conventions
 - Python 3.10+, PEP 8, 4-space indentation

@@ -34,6 +34,20 @@ Trade Platform (ccxt + TA + Chan)
 - 安装开发依赖：`pdm install -G dev`
 - 运行：`pdm run pytest -q`
 
+策略过滤与风控（示例）
+- 单周期动量：
+  - `pdm run trade-cli backtest --input data/BTCUSDT-1h.csv --rsi-min 55 --min-atr-pct 0.004 --stop-pct 0.02 --tp-pct 0.04`
+- 多周期动量（4h + 1d）：
+  - `pdm run trade-cli mtf --lower-input data/BTCUSDT-4h.csv --higher-input data/BTCUSDT-1d.csv --require-htf-breakout --min-htf-run 3 --rsi-min 55 --min-atr-pct 0.004 --stop-pct 0.02 --tp-pct 0.04 --run-backtest`
+- 单周期均值回归：
+  - `pdm run trade-cli backtest --input data/BTCUSDT-1h.csv --rsi-max 45 --max-atr-pct 0.02 --stop-pct 0.02 --tp-pct 0.03`
+
+快捷脚本（PDM）
+- `pdm run bt_momentum`：1h 动量回测
+- `pdm run bt_meanrev`：1h 均值回归回测
+- `pdm run mtf_momentum_4h_1d`：4h+1d 动量（方向+中枢突破）
+- `pdm run mtf_meanrev_4h_1d`：4h+1d 均值回归（方向一致）
+
 目录结构
 - trade_platform/
   - exchanges.py       ccxt封装
