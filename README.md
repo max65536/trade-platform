@@ -8,11 +8,13 @@ Trade Platform (ccxt + TA + Chan)
 - 多周期合成（MTF）：将高周期线段/中枢对齐到低周期，按方向与突破过滤信号
 - 回测器与可视化（matplotlib）
 - 命令行工具
+ - 最简 Web UI（本地浏览器）
 
 快速开始（PDM）
 - Python 3.10+
 - 安装依赖：`pdm install`（如未安装 PDM，可用 `pipx install pdm`）
 - 运行 CLI：`pdm run trade-cli --help`
+- 运行 WebUI：`pdm run trade-webui`，打开浏览器访问 `http://127.0.0.1:8000`
 
 命令行用法
 - 拉取K线：
@@ -46,7 +48,15 @@ Trade Platform (ccxt + TA + Chan)
   - `--show-macd`：在价格图下方叠加 MACD 子图（柱形 + 线），并在有 `buy3/sell3` 时在 MACD 柱上高亮标记，辅助判断背驰。
   - 其他子图（默认关闭，可按需开启）：
     - `--show-rsi`：增加 RSI(14) 子图（含 70/30 参考线）
-    - `--show-atr`：增加 ATR(14) 子图
+  - `--show-atr`：增加 ATR(14) 子图
+
+WebUI（最小版，无第三方依赖）
+- 启动：`pdm run trade-webui --host 127.0.0.1 --port 8000`
+- 在浏览器中填写表单参数并回测：
+  - CSV 路径（服务进程可访问的本地路径）
+  - 可选时间范围、策略过滤（RSI/ATR）、风险参数（fee/止损/止盈）、仓位与滑点
+  - 生成结果页：统计表、回测图（含信号/交易）、导出 trades.csv 和 stats.json
+- 说明：为避免引入 web 依赖，WebUI 不支持直接文件上传；若需要可将数据放至本机并提供路径。
 
 - 批量拉取：
   - `pdm run trade-cli batch --exchange binance --symbols BTC/USDT ETH/USDT --timeframes 4h 1d --output-dir data/spot --name-template {symbol_noslash}-{timeframe}.csv --max-bars 5000`

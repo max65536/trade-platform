@@ -27,6 +27,7 @@ dev = [
 
 [project.scripts]
 trade-cli = "trade_platform.cli:main"
+trade-webui = "trade_platform.webui:main"
 
 [tool.pdm]
 package-dir = "."

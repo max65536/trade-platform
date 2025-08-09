@@ -40,6 +40,8 @@ def plot_kline(
     show_atr: bool = False,
     rsi_length: int = 14,
     atr_length: int = 14,
+    sma_lengths: Optional[List[int]] = None,
+    ema_lengths: Optional[List[int]] = None,
 ):
     plt, LineCollection, Line2D = _lazy_import_mpl()
     import numpy as np
@@ -90,6 +92,7 @@ def plot_kline(
         wick_c = "#aaa"
         seg_c, pen_c = "#ffb74d", "#b39ddb"
         band_c = "#42a5f5"
+        ma_palette = ["#90caf9", "#ce93d8", "#80cbc4", "#f48fb1", "#fff59d"]
     elif theme == "minimal":
         fig.patch.set_facecolor("white")
         ax.set_facecolor("white")
@@ -99,6 +102,7 @@ def plot_kline(
         wick_c = "#666"
         seg_c, pen_c = "#ff7f0e", "#9467bd"
         band_c = "#1f77b4"
+        ma_palette = ["#1f77b4", "#9467bd", "#2ca02c", "#d62728", "#ff7f0e"]
     else:  # light
         fig.patch.set_facecolor("white")
         ax.set_facecolor("white")
@@ -108,6 +112,7 @@ def plot_kline(
         wick_c = "#666"
         seg_c, pen_c = "#ff7f0e", "#9467bd"
         band_c = "#1f77b4"
+        ma_palette = ["#1f77b4", "#9467bd", "#2ca02c", "#d62728", "#ff7f0e"]
 
     ax.set_title(title or "Kline", color=axis_c)
 
@@ -241,6 +246,39 @@ def plot_kline(
                 ax.legend(handles, labels, loc="upper left")
             else:
                 ax.legend(loc="upper left")
+
+    # Moving averages overlays (optional)
+    try:
+        sma_lengths  # type: ignore[name-defined]
+        ema_lengths  # type: ignore[name-defined]
+    except Exception:
+        # Backwards-compat if older signature; skip
+        sma_lengths = None  # type: ignore[assignment]
+        ema_lengths = None  # type: ignore[assignment]
+    pal_idx = 0
+    if 'ma_palette' in locals():
+        if sma_lengths:
+            for ln in sma_lengths:
+                try:
+                    ma = ta.sma(df["close"], int(ln))
+                except Exception:
+                    continue
+                c = ma_palette[pal_idx % len(ma_palette)]
+                pal_idx += 1
+                ax.plot(x, ma.values, color=c, linewidth=1.2, alpha=0.9, label=f"SMA{ln}")
+        if ema_lengths:
+            for ln in ema_lengths:
+                try:
+                    ma = ta.ema(df["close"], int(ln))
+                except Exception:
+                    continue
+                c = ma_palette[pal_idx % len(ma_palette)]
+                pal_idx += 1
+                ax.plot(x, ma.values, color=c, linewidth=1.2, alpha=0.9, linestyle="--", label=f"EMA{ln}")
+        if (sma_lengths or ema_lengths):
+            handles, labels = ax.get_legend_handles_labels()
+            if handles and labels:
+                ax.legend(handles, labels, loc="upper left")
 
     # Pivot labels (if objects provided)
     if label_pivots and pivots:
