@@ -16,6 +16,23 @@ Trade Platform (ccxt + TA + Chan)
 - 运行 CLI：`pdm run trade-cli --help`
 - 运行 WebUI：`pdm run trade-webui`，打开浏览器访问 `http://127.0.0.1:8000`
 
+ECharts 行情与 MTF（交互视图）
+- 单周期：打开 `http://127.0.0.1:8000/echarts`
+  - 数据源：CSV 路径或 交易所（exchange/symbol/timeframe/limit/since）
+  - 指标：SMA/EMA 叠加，MACD/RSI/ATR 子图（可选）
+  - 缠论：pivot bands/segments/signals（可选）
+  - 交互：多子图联动、十字光标、区间缩放
+- 多周期：打开 `http://127.0.0.1:8000/echarts-mtf`
+  - LTF/HTF：CSV 或 交易所（lower_tf/higher_tf）
+  - 过滤：`require_htf_breakout`、`min_htf_run`
+  - 对比：基础信号 vs MTF 过滤信号（可分别开关）
+
+Web API（JSON）
+- `GET /api/ohlcv`：返回 LTF OHLCV + 所选指标 + 缠论（bands/segments/signals）
+  - 主要参数：`input_path` 或 `exchange/symbol/timeframe`，`limit`，`since`，`sma=20,50`，`ema=50,100`，`macd/rsi/atr=1/0`，`bands/segments/signals=1/0`
+- `GET /api/mtf`：返回 LTF OHLCV + 对齐后的 HTF bands + 基础/过滤信号 + 指标
+  - 主要参数：`lower_input/higher_input` 或 `exchange/symbol + lower_tf/higher_tf`，`limit`，`since`，`require_htf_breakout`，`min_htf_run`；指标参数同上
+
 命令行用法
 - 拉取K线：
   - `pdm run trade-cli fetch --exchange binance --symbol BTC/USDT --timeframe 1h --limit 2000 --output data/BTCUSDT-1h.csv`
@@ -46,7 +63,7 @@ Trade Platform (ccxt + TA + Chan)
   - 说明：若 `signals` 含 `kind` 列，会按类别自动渲染：
     - `buy1/sell1` 实心箭头；`buy2/sell2` 实心箭头（带带宽色描边）；`buy3/sell3` 空心箭头（彩色描边）；`turn` 为 “x” 标记；并在箭头附近标注 1/2/3。
   - `--show-macd`：在价格图下方叠加 MACD 子图（柱形 + 线），并在有 `buy3/sell3` 时在 MACD 柱上高亮标记，辅助判断背驰。
-  - 其他子图（默认关闭，可按需开启）：
+- 其他子图（默认关闭，可按需开启）：
     - `--show-rsi`：增加 RSI(14) 子图（含 70/30 参考线）
   - `--show-atr`：增加 ATR(14) 子图
 
@@ -106,8 +123,9 @@ WebUI（最小版，无第三方依赖）
  - chan.py            缠论核心（分型/笔/线段/中枢/信号）
   - multiframe.py      多周期合成与信号过滤
   - backtest.py        回测引擎
- - plotting.py        可视化
+ - plotting.py        可视化（主图可叠加 SMA/EMA，子图支持 MACD/RSI/ATR）
   - cli.py             命令行入口
+  - webui.py           WebUI（标准库 http.server）与 JSON API（/api/ohlcv, /api/mtf）
  - pyproject.toml     PDM 项目配置（依赖/脚本）
 
 说明
