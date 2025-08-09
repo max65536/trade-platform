@@ -1,3 +1,26 @@
+Working Memory Snapshot (for new sessions)
+
+- CLI: `trade-cli` supports `fetch/batch/analyze/backtest/mtf/plot`; pipeline at `scripts/pipeline.py`.
+- Chan: `analyze()` defaults to full workflow (inclusion→fractals→pens→segments→pivots + signals: turn, buy1/2/3, sell1/2/3). Use `mode="simple"` for legacy.
+- Backtest: next-bar entries, TP then SL intrabar, long-only; stats include PF, drawdown, exposure; equity series aligned to bars.
+- MTF: use `multiframe.align_htf_to_ltf` and `filter_signals_with_htf_opts(require_htf_breakout, min_htf_run)`.
+- WebUI: pages `/`, `/echarts`, `/echarts-mtf`; APIs `/api/ohlcv`, `/api/mtf`.
+- Proxies: `TRADE_HTTP_PROXY`, `TRADE_HTTPS_PROXY`, `TRADE_NO_PROXY` supported in ccxt wrapper.
+
+Active Plan (next steps)
+
+1) CI basics: GitHub Actions running `ruff`, `black --check`, `pytest -q` on push/PR.
+2) Tests: add Chan divergence (buy3/sell3) and pivot retest (buy2/sell2) edge-case unit tests.
+3) Backtest stats: add Sharpe/Sortino/CAGR/Kelly-lite and drawdown recovery; surface in CLI/WebUI.
+4) Fetch/batch: incremental append + dedupe, integrity checks, and resumable downloads.
+5) Strategy presets: YAML presets (momentum/meanrev/MTF) consumed by CLI and pipeline.
+6) WebUI polish: ECharts toggles for signal groups, trade overlay, export current params.
+
+Verification Checklist
+- Lint/format: `pdm run lint` and `pdm run format-check` clean.
+- Tests: `pdm run pytest -q` green; new cases cover Chan signals and backtest stats.
+- Manual: run a small MTF pipeline and plot succeeds; WebUI endpoints return JSON within 1–2s on sample CSV.
+
 TODOs (Development Roadmap)
 
 WebUI · 单周期（/echarts）
@@ -57,3 +80,8 @@ Infra（工程化）
 - [ ] pre-commit（ruff/black/pytest -q）
 - [ ] 版本与变更日志（CHANGELOG）
 - [ ] 样本数据与使用说明（data/）
+
+Notes for Contributors
+- Prefer deterministic synthetic data in tests; avoid network.
+- Keep modules focused; minimal API surface with type hints and short docstrings.
+- When adding features, update AGENTS.md memory and this Active Plan if scope changes.

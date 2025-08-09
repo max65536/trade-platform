@@ -1,3 +1,27 @@
+# Agent Memory (Persistent)
+
+This section captures stable, high-signal facts so new sessions avoid re-reading the entire repo.
+
+- Purpose: ccxt-based research/trading skeleton with TA, Chan (full), MTF alignment, backtest, CLI + minimal WebUI.
+- Data schema: CSV columns `[timestamp, open, high, low, close, volume]` plus `datetime` (ms→UTC naive).
+- Analysis default: `chan.analyze()` now runs the full workflow (inclusion→fractals→pens→segments→pivots + signals: turn/buy1/2/3, sell1/2/3). Pass `mode="simple"` for legacy behavior.
+- Backtest semantics: next-bar-at-open execution; TP/SL checked intrabar (TP first), long-only flip on sell; equity curve aligned to bars and forward-filled; supports `initial_capital/position_size/slippage_bps`.
+- MTF filtering: map HTF `segments/bands` to LTF via datetime; keep buys when `htf_dir>0` (and optional breakout over `htf_pivot_high`), sells when `htf_dir<0` (optional breakout below `htf_pivot_low`); optional `min_htf_run`.
+- WebUI: `trade-webui` serves `/`, `/echarts`, `/echarts-mtf`; APIs: `GET /api/ohlcv` and `GET /api/mtf` return OHLCV, indicators, Chan outputs, and MTF context.
+- CLI entry: `trade-cli` with subcommands `fetch/batch/analyze/backtest/mtf/plot`; end-to-end script at `scripts/pipeline.py` (`pdm run pipeline -- ...`).
+- Proxies: ccxt wrapper honors `TRADE_HTTP_PROXY`, `TRADE_HTTPS_PROXY`, `TRADE_NO_PROXY` if provided.
+- Non-goals (current): shorting, portfolio/multi-asset risk, persistent DB; focus on CSV + stateless analysis.
+
+Session Boot Checklist
+- Run tests: `pdm run pytest -q` and format/lint if needed.
+- Skim `README.md` for latest quickstart and WebUI endpoints.
+- For MTF tasks: load LTF/HTF CSVs, call `chan.analyze` on both, then `multiframe.align_htf_to_ltf` and `filter_signals_with_htf_opts`.
+- For backtests: ensure indicators via `strategy.ensure_indicators`, then `simple_execute` or `execute_with_risk`.
+
+Preferred Conventions
+- Python 3.10+, PEP 8, typed public APIs; modules/functions `snake_case`, classes `PascalCase`.
+- Indicators prefer pure functions; avoid network in tests (use synthetic OHLCV in `tests/`).
+
 # Repository Guidelines
 
 ## Project Structure & Module Organization
