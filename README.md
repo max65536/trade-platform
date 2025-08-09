@@ -27,6 +27,12 @@ Trade Platform (ccxt + TA + Chan)
 
 - 回测：
   - `pdm run trade-cli backtest --input data/BTCUSDT-1h.csv --start 2023-01-01 --end 2024-01-01`
+  - 可选参数：
+    - `--initial-capital 1.0`：初始资金（默认 1.0）
+    - `--position-size 1.0`：每笔使用资金比例（0..1，默认 1.0）
+    - `--slippage-bps 0`：每边滑点（基点，默认 0）
+    - `--stop-pct/--tp-pct`：风控（触发则按当根高低价内成交）
+    - `--save-trades out/trades.csv`、`--save-stats out/stats.json`：保存交易与统计
 
 - 多周期合成（示例：4h + 1d）：
   - `pdm run trade-cli mtf --lower-input data/BTCUSDT-4h.csv --higher-input data/BTCUSDT-1d.csv --out data/BTCUSDT-4h-mtf.csv --require-htf-breakout --min-htf-run 3 --run-backtest`
@@ -97,7 +103,13 @@ Trade Platform (ccxt + TA + Chan)
 说明
 - 缠论分析默认采用工程化完整版本（包含关系合并、严格分笔、三笔成段、中枢与三类买卖点），同时保留简化实现用于兼容。
 - 多周期通过 merge_asof 对齐高周期上下文（方向/中枢带）到低周期，支持方向一致与高周期突破与最小延续长度过滤。
-- 回测为事件驱动、下根K线开盘成交的近似执行模型，用于快速验证策略逻辑。
+- 回测为事件驱动、下根K线开盘成交的近似执行模型：
+  - `simple_execute`（买卖翻转、下根开盘成交）
+  - `execute_with_risk`（支持 TP/SL：入场后优先检查当根高/低触发其一）
+  - 新增：
+    - 每笔交易记录 `entry/exit/ret/size/holding_bars` 与 `side`
+    - 资金曲线（与 K 线对齐），统计包含：累计收益、胜率、PF、最大回撤、平均持仓、小结暴露时间（exposure）等
+    - 资金管理：初始资金、仓位比例、滑点（基点）
 
 高级：缠论完整模式
 - 位置：`trade_platform/chan.py`

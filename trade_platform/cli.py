@@ -176,12 +176,33 @@ def cmd_backtest(args: argparse.Namespace):
             fee_rate=args.fee,
             stop_loss_pct=args.stop_pct,
             take_profit_pct=args.tp_pct,
+            initial_capital=args.initial_capital,
+            position_size=args.position_size,
+            slippage_bps=args.slippage_bps,
         )
     else:
-        res = simple_execute(df, sigs, fee_rate=args.fee)
+        res = simple_execute(
+            df,
+            sigs,
+            fee_rate=args.fee,
+            initial_capital=args.initial_capital,
+            position_size=args.position_size,
+            slippage_bps=args.slippage_bps,
+        )
     print("Backtest stats:")
     for k, v in res.stats.items():
         print(f"- {k}: {v}")
+    if args.save_trades:
+        os.makedirs(os.path.dirname(args.save_trades), exist_ok=True)
+        res.trades.to_csv(args.save_trades, index=False)
+        print(f"Trades saved to {args.save_trades}")
+    if args.save_stats:
+        os.makedirs(os.path.dirname(args.save_stats), exist_ok=True)
+        import json
+        with open(args.save_stats, "w", encoding="utf-8") as f:
+            import json as _json
+            _json.dump(res.stats, f, indent=2)
+        print(f"Stats saved to {args.save_stats}")
 
 
 def cmd_mtf(args: argparse.Namespace):
@@ -437,6 +458,9 @@ def build_parser():
     b.add_argument("--start", default=None)
     b.add_argument("--end", default=None)
     b.add_argument("--fee", type=float, default=0.0005)
+    b.add_argument("--initial-capital", type=float, default=1.0, help="Starting equity (default 1.0)")
+    b.add_argument("--position-size", type=float, default=1.0, help="Fraction of equity per trade (0..1)")
+    b.add_argument("--slippage-bps", type=float, default=0.0, help="Slippage in basis points per side")
     # strategy filters
     b.add_argument("--rsi-min", type=float, default=None)
     b.add_argument("--rsi-max", type=float, default=None)
@@ -449,6 +473,8 @@ def build_parser():
     b.add_argument("--div-min-price-ext-pct", type=float, default=0.0)
     b.add_argument("--div-min-hist-delta", type=float, default=0.0)
     b.add_argument("--div-require-hist-sign-consistency", action="store_true")
+    b.add_argument("--save-trades", default=None, help="Optional path to write trades CSV")
+    b.add_argument("--save-stats", default=None, help="Optional path to write stats JSON")
     b.set_defaults(func=cmd_backtest)
 
     m = sub.add_parser("mtf", help="Multi-timeframe: align HTF context to LTF and optional backtest")
