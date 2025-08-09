@@ -65,10 +65,36 @@ def _compute_drawdown_stats(equity: pd.Series) -> Dict[str, float]:
     }
 
 
+def _estimate_periods_per_year_from_df(df: Optional[pd.DataFrame]) -> float:
+    """Best-effort estimate of bars-per-year using datetime spacing; fallback to 252.
+
+    - If 'datetime' exists and has >=2 rows, use median delta to infer bars/year.
+    - Else return 252 as a conservative default (daily-like).
+    """
+    if df is None or "datetime" not in df.columns:
+        return 252.0
+    try:
+        t = pd.to_datetime(df["datetime"])  # tolerate naive
+        if len(t) < 2:
+            return 252.0
+        deltas = t.diff().dropna().dt.total_seconds()
+        if deltas.empty:
+            return 252.0
+        sec_per_bar = float(deltas.median())
+        if sec_per_bar <= 0:
+            return 252.0
+        sec_per_year = 365.25 * 24 * 3600
+        return max(1.0, sec_per_year / sec_per_bar)
+    except Exception:
+        return 252.0
+
+
 def _basic_stats(
     trades: pd.DataFrame,
     equity: pd.Series,
     exposure_bars: int,
+    *,
+    periods_per_year: float = 252.0,
 ) -> Dict[str, float]:
     stats: Dict[str, float] = {}
     if trades is None or trades.empty:
@@ -82,6 +108,28 @@ def _basic_stats(
             "exposure_pct": float(exposure_bars / max(len(equity), 1)) if equity is not None and len(equity) > 0 else 0.0,
         })
         stats.update(_compute_drawdown_stats(equity if equity is not None else pd.Series([1.0])))
+        # risk metrics on equity (bar returns)
+        if equity is not None and len(equity) > 1:
+            r = equity.pct_change().dropna()
+            mu = float(r.mean()) if len(r) else 0.0
+            sigma = float(r.std(ddof=0)) if len(r) else 0.0
+            downside = r[r < 0]
+            ds = float(downside.std(ddof=0)) if len(downside) else 0.0
+            ann = np.sqrt(max(periods_per_year, 1.0))
+            stats.update({
+                "volatility_ann": float(sigma * ann) if sigma > 0 else 0.0,
+                "sharpe": float(mu / sigma * ann) if sigma > 0 else np.inf,
+                "sortino": float(mu / ds * ann) if ds > 0 else np.inf,
+            })
+            years = float(len(equity)) / max(periods_per_year, 1.0)
+            cagr = float((equity.iloc[-1] / equity.iloc[0]) ** (1.0 / years) - 1.0) if years > 0 else 0.0
+            dd_stats = _compute_drawdown_stats(equity)
+            max_dd = float(dd_stats.get("max_drawdown", 0.0))
+            calmar = (cagr / abs(max_dd)) if max_dd < 0 else np.inf
+            stats.update({
+                "cagr": cagr,
+                "calmar": float(calmar),
+            })
         return stats
 
     wins = trades.loc[trades["ret"] > 0, "ret"]
@@ -111,7 +159,45 @@ def _basic_stats(
         "exposure_bars": exposure_bars,
         "exposure_pct": float(exposure_bars / max(len(equity), 1)) if equity is not None and len(equity) > 0 else 0.0,
     })
-    stats.update(_compute_drawdown_stats(equity))
+    dd_stats = _compute_drawdown_stats(equity)
+    stats.update(dd_stats)
+
+    # Recovery bars after max drawdown
+    try:
+        start_idx = int(dd_stats.get("max_dd_start_idx", 0))
+        end_idx = int(dd_stats.get("max_dd_end_idx", 0))
+        rec = None
+        if 0 <= start_idx < len(equity) and 0 <= end_idx < len(equity):
+            peak_eq = float(equity.iloc[start_idx])
+            for j in range(end_idx, len(equity)):
+                if float(equity.iloc[j]) >= peak_eq:
+                    rec = j - end_idx
+                    break
+        stats["max_dd_recovery_bars"] = int(rec) if rec is not None else None
+    except Exception:
+        stats["max_dd_recovery_bars"] = None
+
+    # Bar-return risk metrics
+    if equity is not None and len(equity) > 1:
+        r = equity.pct_change().dropna()
+        mu = float(r.mean()) if len(r) else 0.0
+        sigma = float(r.std(ddof=0)) if len(r) else 0.0
+        downside = r[r < 0]
+        ds = float(downside.std(ddof=0)) if len(downside) else 0.0
+        ann = np.sqrt(max(periods_per_year, 1.0))
+        stats.update({
+            "volatility_ann": float(sigma * ann) if sigma > 0 else 0.0,
+            "sharpe": float(mu / sigma * ann) if sigma > 0 else np.inf,
+            "sortino": float(mu / ds * ann) if ds > 0 else np.inf,
+        })
+        years = float(len(equity)) / max(periods_per_year, 1.0)
+        cagr = float((equity.iloc[-1] / equity.iloc[0]) ** (1.0 / years) - 1.0) if years > 0 else 0.0
+        max_dd = float(dd_stats.get("max_drawdown", 0.0))
+        calmar = (cagr / abs(max_dd)) if max_dd < 0 else np.inf
+        stats.update({
+            "cagr": cagr,
+            "calmar": float(calmar),
+        })
     return stats
 
 
@@ -168,7 +254,8 @@ def simple_execute(
     exposure_bars = 0
     if not trades.empty:
         exposure_bars = int((trades["exit_idx"] - trades["entry_idx"]).clip(lower=0).sum())
-    stats = _basic_stats(trades, equity, exposure_bars)
+    ppy = _estimate_periods_per_year_from_df(df)
+    stats = _basic_stats(trades, equity, exposure_bars, periods_per_year=ppy)
     return BacktestResult(trades=trades, equity_curve=equity, stats=stats)
 
 
@@ -288,5 +375,6 @@ def execute_with_risk(
     exposure_bars = 0
     if not trades.empty:
         exposure_bars = int((trades["exit_idx"] - trades["entry_idx"]).clip(lower=0).sum())
-    stats = _basic_stats(trades, equity, exposure_bars)
+    ppy = _estimate_periods_per_year_from_df(df)
+    stats = _basic_stats(trades, equity, exposure_bars, periods_per_year=ppy)
     return BacktestResult(trades=trades, equity_curve=equity, stats=stats)

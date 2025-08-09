@@ -8,7 +8,7 @@ from typing import List
 import pandas as pd
 
 from .exchanges import ExchangeClient
-from .dataio import CandleFrame
+from .dataio import CandleFrame, write_csv_merged
 from . import indicators as ta
 from . import chan
 from .backtest import simple_execute
@@ -16,6 +16,7 @@ from . import multiframe as mtf
 from . import plotting
 from . import strategy
 from .backtest import execute_with_risk
+from . import presets as preset_mod
 
 
 def _parse_date(s: str) -> int:
@@ -26,10 +27,25 @@ def _parse_date(s: str) -> int:
     return int(dt.timestamp() * 1000)
 
 
+def _read_last_timestamp_if_exists(path: str) -> int | None:
+    try:
+        cf = CandleFrame.read_csv(path)
+        if "timestamp" in cf.df.columns and not cf.df.empty:
+            return int(pd.to_numeric(cf.df["timestamp"]).max())
+    except Exception:
+        return None
+    return None
+
+
 def cmd_fetch(args: argparse.Namespace):
     ex = ExchangeClient(args.exchange)
     ex.load_markets()
     since = _parse_date(args.since) if args.since else None
+    # If appending, derive since from existing file (max) to avoid redundant fetch
+    if args.append and os.path.exists(args.output):
+        last_ts = _read_last_timestamp_if_exists(args.output)
+        if last_ts is not None:
+            since = max(since or last_ts, last_ts)
     candles = ex.fetch_ohlcv_all(
         symbol=args.symbol,
         timeframe=args.timeframe,
@@ -39,8 +55,15 @@ def cmd_fetch(args: argparse.Namespace):
     )
     cf = CandleFrame.from_ohlcv(candles)
     os.makedirs(os.path.dirname(args.output), exist_ok=True)
-    cf.to_csv(args.output)
-    print(f"Saved {len(cf.df)} candles to {args.output}")
+    if args.append and os.path.exists(args.output):
+        before = _read_last_timestamp_if_exists(args.output)
+        total = write_csv_merged(args.output, cf.df)
+        after = _read_last_timestamp_if_exists(args.output)
+        added = len(cf.df)
+        print(f"Appended {added} candles; total {total} -> {args.output}")
+    else:
+        cf.to_csv(args.output)
+        print(f"Saved {len(cf.df)} candles to {args.output}")
 
 
 def _read_list_file(path: str) -> List[str]:
@@ -57,7 +80,7 @@ def _read_list_file(path: str) -> List[str]:
 def cmd_batch(args: argparse.Namespace):
     ex = ExchangeClient(args.exchange)
     ex.load_markets()
-    since = _parse_date(args.since) if args.since else None
+    since_cli = _parse_date(args.since) if args.since else None
 
     # gather symbols
     symbols: List[str] = []
@@ -85,6 +108,14 @@ def cmd_batch(args: argparse.Namespace):
     for sym in symbols:
         for tf in tfs:
             try:
+                # If appending and target exists, start since the last saved ts
+                out_path = os.path.join(out_dir, fname)
+                since = since_cli
+                if args.append and os.path.exists(out_path):
+                    last_ts = _read_last_timestamp_if_exists(out_path)
+                    if last_ts is not None:
+                        since = max(since or last_ts, last_ts)
+
                 ohlcv = ex.fetch_ohlcv_all(
                     symbol=sym,
                     timeframe=tf,
@@ -95,11 +126,15 @@ def cmd_batch(args: argparse.Namespace):
                 cf = CandleFrame.from_ohlcv(ohlcv)
                 sym_noslash = sym.replace("/", "")
                 fname = args.name_template.format(symbol=sym, symbol_noslash=sym_noslash, timeframe=tf)
-                out_path = os.path.join(out_dir, fname)
                 os.makedirs(os.path.dirname(out_path), exist_ok=True)
-                cf.to_csv(out_path)
-                total += len(cf.df)
-                print(f"Saved {len(cf.df)} candles: {sym} {tf} -> {out_path}")
+                if args.append and os.path.exists(out_path):
+                    total_rows = write_csv_merged(out_path, cf.df)
+                    total += len(cf.df)
+                    print(f"Appended {len(cf.df)} candles: {sym} {tf} -> {out_path} (total {total_rows})")
+                else:
+                    cf.to_csv(out_path)
+                    total += len(cf.df)
+                    print(f"Saved {len(cf.df)} candles: {sym} {tf} -> {out_path}")
             except Exception as e:
                 print(f"Error fetching {sym} {tf}: {e}")
                 continue
@@ -137,7 +172,24 @@ def cmd_analyze(args: argparse.Namespace):
     )
 
 
+def _maybe_apply_preset(args: argparse.Namespace, *, context: str):
+    if not getattr(args, "preset", None):
+        return args
+    pr = preset_mod.get_preset(args.preset, file=getattr(args, "preset_file", None))
+    if not pr:
+        print(f"Preset not found: {args.preset}")
+        return args
+    common = ["rsi_min", "rsi_max", "min_atr_pct", "max_atr_pct", "fee", "stop_pct", "tp_pct"]
+    mtf_keys = ["require_htf_breakout", "min_htf_run"]
+    keys = list(common)
+    if context == "mtf":
+        keys += mtf_keys
+    preset_mod.apply_preset(args, pr, keys=keys)
+    return args
+
+
 def cmd_backtest(args: argparse.Namespace):
+    args = _maybe_apply_preset(args, context="backtest")
     cf = CandleFrame.read_csv(args.input)
     df = cf.df.copy()
     # time slicing
@@ -206,6 +258,7 @@ def cmd_backtest(args: argparse.Namespace):
 
 
 def cmd_mtf(args: argparse.Namespace):
+    args = _maybe_apply_preset(args, context="mtf")
     # load lower/higher
     lcf = CandleFrame.read_csv(args.lower_input)
     hcf = CandleFrame.read_csv(args.higher_input)
@@ -293,6 +346,7 @@ def cmd_mtf(args: argparse.Namespace):
 
 
 def cmd_plot(args: argparse.Namespace):
+    args = _maybe_apply_preset(args, context="plot")
     cf = CandleFrame.read_csv(args.input)
     df = cf.df.copy().reset_index(drop=True)
     if args.limit and len(df) > args.limit:
@@ -425,6 +479,7 @@ def build_parser():
     f.add_argument("--limit", type=int, default=500)
     f.add_argument("--max-bars", type=int, default=None)
     f.add_argument("--output", required=True)
+    f.add_argument("--append", action="store_true", help="Append to existing CSV with de-dup by timestamp")
     f.set_defaults(func=cmd_fetch)
 
     bf = sub.add_parser("batch", help="Batch fetch OHLCV for multiple symbols/timeframes")
@@ -442,6 +497,7 @@ def build_parser():
         default="{symbol_noslash}-{timeframe}.csv",
         help="Filename template; tokens: {symbol}, {symbol_noslash}, {timeframe}",
     )
+    bf.add_argument("--append", action="store_true", help="Append to existing CSVs with de-dup by timestamp")
     bf.set_defaults(func=cmd_batch)
 
     a = sub.add_parser("analyze", help="Run indicators + Chan analysis")
@@ -454,6 +510,8 @@ def build_parser():
     a.set_defaults(func=cmd_analyze)
 
     b = sub.add_parser("backtest", help="Backtest simplified Chan strategy")
+    b.add_argument("--preset", default=None, help="Strategy preset name (builtin or via --preset-file)")
+    b.add_argument("--preset-file", default=None, help="Path to JSON presets file")
     b.add_argument("--input", required=True)
     b.add_argument("--start", default=None)
     b.add_argument("--end", default=None)
@@ -478,6 +536,8 @@ def build_parser():
     b.set_defaults(func=cmd_backtest)
 
     m = sub.add_parser("mtf", help="Multi-timeframe: align HTF context to LTF and optional backtest")
+    m.add_argument("--preset", default=None, help="Strategy preset name (supports MTF keys)")
+    m.add_argument("--preset-file", default=None, help="Path to JSON presets file")
     m.add_argument("--lower-input", required=True, help="Lower timeframe CSV path")
     m.add_argument("--higher-input", required=True, help="Higher timeframe CSV path")
     m.add_argument("--out", default=None, help="Write annotated LTF CSV")
@@ -500,6 +560,8 @@ def build_parser():
     m.set_defaults(func=cmd_mtf)
 
     g = sub.add_parser("plot", help="Plot candles with pivots, pens, segments, and signals")
+    g.add_argument("--preset", default=None, help="Strategy preset for filters/trade overlay")
+    g.add_argument("--preset-file", default=None, help="Path to JSON presets file")
     g.add_argument("--input", required=True)
     g.add_argument("--limit", type=int, default=400, help="Plot last N bars")
     g.add_argument("--save", default=None, help="Path to save PNG; if omitted, show window")

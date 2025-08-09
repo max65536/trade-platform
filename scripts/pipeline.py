@@ -176,6 +176,8 @@ def build_parser():
     p.add_argument("--lower-tf", required=True)
     p.add_argument("--higher-tf", required=True)
     p.add_argument("--out-dir", default="runs")
+    p.add_argument("--preset", default=None, help="Strategy preset name (builtin or file)")
+    p.add_argument("--preset-file", default=None, help="Path to JSON presets file")
     p.add_argument("--since", default=None)
     p.add_argument("--limit", type=int, default=500)
     p.add_argument("--max-bars", type=int, default=5000)
@@ -202,6 +204,19 @@ def build_parser():
 
 def main():
     args = build_parser().parse_args()
+    # Apply preset if provided
+    if args.preset:
+        from trade_platform import presets as preset_mod
+        pr = preset_mod.get_preset(args.preset, file=args.preset_file)
+        if pr:
+            # Fill only missing parameters; explicit CLI overrides
+            keys = [
+                "rsi_min", "rsi_max", "min_atr_pct", "max_atr_pct",
+                "fee", "stop_pct", "tp_pct", "require_htf_breakout", "min_htf_run",
+            ]
+            for k in keys:
+                if getattr(args, k, None) is None and k in pr:
+                    setattr(args, k, pr[k])
     run_pipeline(
         exchange=args.exchange,
         symbols=args.symbols,

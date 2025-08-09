@@ -9,17 +9,24 @@ Working Memory Snapshot (for new sessions)
 
 Active Plan (next steps)
 
-1) CI basics: GitHub Actions running `ruff`, `black --check`, `pytest -q` on push/PR.
-2) Tests: add Chan divergence (buy3/sell3) and pivot retest (buy2/sell2) edge-case unit tests.
-3) Backtest stats: add Sharpe/Sortino/CAGR/Kelly-lite and drawdown recovery; surface in CLI/WebUI.
-4) Fetch/batch: incremental append + dedupe, integrity checks, and resumable downloads.
-5) Strategy presets: YAML presets (momentum/meanrev/MTF) consumed by CLI and pipeline.
-6) WebUI polish: ECharts toggles for signal groups, trade overlay, export current params.
+1) CI basics: GitHub Actions running `ruff`, `black --check`, `pytest -q` on push/PR. [completed]
+2) Tests: Chan divergence (buy3/sell3) and pivot retest (buy2/sell2) edge-cases. [completed]
+3) Backtest stats: Sharpe/Sortino/CAGR/Calmar/recovery surfaced in CLI/WebUI. [completed]
+4) Fetch/batch: incremental append + de-dup by timestamp. [completed]
+5) Strategy presets: builtin + JSON file, applied to CLI/MTF/plot and pipeline, explicit args override. [completed]
+6) WebUI polish: ECharts toggles for signal groups, trade overlay, export current params. [next]
 
 Verification Checklist
 - Lint/format: `pdm run lint` and `pdm run format-check` clean.
 - Tests: `pdm run pytest -q` green; new cases cover Chan signals and backtest stats.
 - Manual: run a small MTF pipeline and plot succeeds; WebUI endpoints return JSON within 1–2s on sample CSV.
+
+Presets (for contributors)
+- Location: `trade_platform/presets.py` with builtin dict `_BUILTIN_PRESETS`.
+- Loader: `get_preset(name, file=None)` reads builtin or user JSON. JSON shape `{ name: {key: val, ...} }`.
+- Application: `apply_preset(args_ns, preset, keys=None)` only fills missing args; explicit CLI values win.
+- CLI: `backtest/mtf/plot` accept `--preset` and `--preset-file`. Pipeline accepts the same and merges before execution.
+- Extend: add a new keyset to `_BUILTIN_PRESETS` and, if needed, whitelist new keys in CLI `_maybe_apply_preset`/pipeline merge.
 
 TODOs (Development Roadmap)
 

@@ -78,6 +78,14 @@ WebUI（最小版，无第三方依赖）
 - 批量拉取：
   - `pdm run trade-cli batch --exchange binance --symbols BTC/USDT ETH/USDT --timeframes 4h 1d --output-dir data/spot --name-template {symbol_noslash}-{timeframe}.csv --max-bars 5000`
 
+增量拉取与去重
+- `fetch/batch` 支持 `--append`，如果目标 CSV 已存在：
+  - 自动从已保存的最大 `timestamp` 继续请求，避免重复下载
+  - 以 `timestamp` 去重后保存（保留较新批次的数据）
+  - 例如：
+    - `pdm run trade-cli fetch --exchange binance --symbol BTC/USDT --timeframe 1h --output data/BTCUSDT-1h.csv --append`
+    - `pdm run trade-cli batch --exchange binance --symbols BTC/USDT ETH/USDT --timeframes 4h 1d --output-dir data/spot --append`
+
 网络代理（Proxy）
 - 说明：`trade_platform/exchanges.py` 已支持代理，优先级为 显式 `proxies` 参数（内部用） > `TRADE_*` 环境变量 > 系统级 `HTTP(S)_PROXY` 环境变量（requests 默认）。
 - 推荐：使用 `TRADE_HTTP_PROXY` / `TRADE_HTTPS_PROXY` / `TRADE_NO_PROXY` 环境变量，或直接使用系统 `HTTP_PROXY` / `HTTPS_PROXY` / `NO_PROXY`。
@@ -114,6 +122,32 @@ WebUI（最小版，无第三方依赖）
 - `pdm run pipeline -- --exchange binance --symbols BTC/USDT --lower-tf 4h --higher-tf 1d --out-dir runs --require-htf-breakout --min-htf-run 3 --rsi-min 55 --min-atr-pct 0.004 --stop-pct 0.02 --tp-pct 0.04`
   - 背驰参数同样可用于 pipeline：
     - `--div-min-price-ext-pct 0.003 --div-min-hist-delta 0.002 --div-require-hist-sign-consistency`
+
+策略预设（Presets）
+- 目的：用一行命令调用常见策略参数组合，且“显式 CLI 参数优先，预设仅填补缺省”。
+- 位置：`trade_platform/presets.py`，也支持外部 JSON 文件（`--preset-file`）。
+- 内置预设：
+  - `momentum_1h`：`rsi_min=55, min_atr_pct=0.004, fee=0.0005, stop_pct=0.02, tp_pct=0.04`
+  - `meanrev_1h`：`rsi_max=45, max_atr_pct=0.02, fee=0.0005, stop_pct=0.02, tp_pct=0.03`
+  - `mtf_momentum_4h_1d`：在 `momentum_1h` 基础上，`require_htf_breakout, min_htf_run=3`
+  - `mtf_meanrev_4h_1d`：在 `meanrev_1h` 基础上，`min_htf_run=2`
+- 用法：
+  - 单周期回测：
+    - `pdm run trade-cli backtest --preset momentum_1h --input data/BTCUSDT-1h.csv`
+  - 多周期（HTF 过滤 + 回测）：
+    - `pdm run trade-cli mtf --preset mtf_momentum_4h_1d --lower-input data/BTCUSDT-4h.csv --higher-input data/BTCUSDT-1d.csv --run-backtest`
+  - 绘图（叠加交易轨迹）：
+    - `pdm run trade-cli plot --preset momentum_1h --input data/BTCUSDT-1h.csv --plot-trades --save out/momo.png`
+- 外部 JSON：
+  - 结构示例：
+    - `{ "my_momo": { "rsi_min": 60, "stop_pct": 0.015, "tp_pct": 0.03 } }`
+  - 用法：`--preset my_momo --preset-file presets.json`
+
+回测统计（扩展）
+- 在原有 `trades/win_rate/avg_ret/cum_return/profit_factor/max_drawdown/exposure_*` 基础上新增：
+  - `sharpe/sortino/volatility_ann`：基于资金曲线逐bar收益并年化（自动估算年bar数）
+  - `cagr/calmar`：年化复合收益率与卡玛比率
+  - `max_dd_recovery_bars`：最大回撤谷底恢复至前峰值所需bar数（未恢复则为 None）
 
 目录结构
 - trade_platform/
