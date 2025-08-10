@@ -16,7 +16,7 @@ from ..backtest import simple_execute, execute_with_risk
 from .. import plotting
 from ..exchanges import ExchangeClient
 from .paths import ensure_dirs, PLOTS_DIR, TRADES_DIR, STATS_DIR
-from .pages import html_page
+from .pages import html_page, backtest_index
 
 
 def handle_backtest(handler) -> None:
@@ -51,7 +51,9 @@ def handle_backtest(handler) -> None:
 
         ensure_dirs()
         if not input_path:
-            return _send_html(handler, html_page("Trade Platform WebUI", "<p>Please provide a CSV path.</p>"))
+            return _send_html(handler, backtest_index("Please provide a CSV path."))
+        if not os.path.exists(input_path):
+            return _send_html(handler, backtest_index(f"CSV not found: {input_path}"))
 
         cf = CandleFrame.read_csv(input_path)
         df = cf.df.copy()
@@ -90,11 +92,39 @@ def handle_backtest(handler) -> None:
         run_id = datetime.utcnow().strftime("%Y%m%d-%H%M%S")
         trades_path = os.path.join(TRADES_DIR, f"{run_id}.csv")
         stats_path = os.path.join(STATS_DIR, f"{run_id}.json")
+        cfg_path = os.path.join(STATS_DIR, f"{run_id}-config.json")
         plot_path = os.path.join(PLOTS_DIR, f"{run_id}.png")
         if not res.trades.empty:
             res.trades.to_csv(trades_path, index=False)
         with open(stats_path, "w", encoding="utf-8") as f:
             json.dump(res.stats, f, indent=2)
+        # Save config used for reproducibility
+        cfg = {
+            "input_path": input_path,
+            "start": start,
+            "end": end,
+            "fee": fee,
+            "rsi_min": rsi_min,
+            "rsi_max": rsi_max,
+            "min_atr_pct": min_atr_pct,
+            "max_atr_pct": max_atr_pct,
+            "stop_pct": stop_pct,
+            "tp_pct": tp_pct,
+            "position_size": position_size,
+            "slippage_bps": slippage_bps,
+            "theme": theme,
+            "limit": limit,
+            "show_macd": show_macd,
+            "show_rsi": show_rsi,
+            "show_atr": show_atr,
+            "show_signals": show_signals,
+            "show_trades": show_trades,
+            "show_pivot_bands": show_pivot_bands,
+            "show_segments": show_segments,
+            "label_segments": label_segments,
+        }
+        with open(cfg_path, "w", encoding="utf-8") as f:
+            json.dump(cfg, f, indent=2)
 
         plot_df = df.copy()
         if limit and len(plot_df) > limit:
@@ -129,9 +159,20 @@ def handle_backtest(handler) -> None:
             show_signals=show_signals,
         )
 
-        stats_rows = "\n".join(
-            f"<tr><td>{k}</td><td>{v}</td></tr>" for k, v in res.stats.items()
-        )
+        preferred = [
+            "trades","win_rate","cum_return","cagr","profit_factor",
+            "best_trade","worst_trade","avg_ret","avg_hold_bars",
+            "max_drawdown","max_dd_recovery_bars","volatility_ann","sharpe","sortino",
+            "exposure_bars","exposure_pct",
+        ]
+        ordered = []
+        for k in preferred:
+            if k in res.stats:
+                ordered.append((k, res.stats[k]))
+        for k, v in res.stats.items():
+            if k not in dict(ordered):
+                ordered.append((k, v))
+        stats_rows = "\n".join(f"<tr><td>{k}</td><td>{v}</td></tr>" for k, v in ordered)
         trades_link = (
             f"<a href=\"/static/trades/{os.path.basename(trades_path)}\">Download trades CSV</a>"
             if not res.trades.empty
@@ -144,6 +185,7 @@ def handle_backtest(handler) -> None:
               <h3>Stats</h3>
               <table><tbody>{stats_rows}</tbody></table>
               <p>Stats JSON: <a href=\"/static/stats/{os.path.basename(stats_path)}\">{os.path.basename(stats_path)}</a></p>
+              <p>Config JSON: <a href=\"/static/stats/{os.path.basename(cfg_path)}\">{os.path.basename(cfg_path)}</a></p>
               <p>{trades_link}</p>
               <p><a href=\"/\">⟵ Back</a></p>
             </div>
@@ -158,7 +200,10 @@ def handle_backtest(handler) -> None:
         """
         return _send_html(handler, html_page("Backtest Result", body))
     except Exception as e:
-        return _send_text(handler, f"Error: {e}", HTTPStatus.INTERNAL_SERVER_ERROR)
+        try:
+            return _send_html(handler, backtest_index(str(e)))
+        except Exception:
+            return _send_text(handler, f"Error: {e}", HTTPStatus.INTERNAL_SERVER_ERROR)
 
 
 def api_ohlcv(handler, parsed) -> None:
@@ -442,4 +487,3 @@ def _send_html(handler, data: bytes, code: int = 200):
     handler.send_header("Content-Length", str(len(data)))
     handler.end_headers()
     handler.wfile.write(data)
-
