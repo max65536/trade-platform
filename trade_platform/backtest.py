@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional, Dict, List
+from typing import Optional, Dict, List, Literal
 
 import numpy as np
 import pandas as pd
@@ -209,44 +209,96 @@ def simple_execute(
     initial_capital: float = 1.0,
     position_size: float = 1.0,
     slippage_bps: float = 0.0,
+    mode: Literal["long", "long_short"] = "long",
+    close_at_end: bool = False,
+    periods_per_year: Optional[float] = None,
 ) -> BacktestResult:
-    """Execute next-bar at open after signal index. Long-only, flip on sell.
+    """Execute next-bar-at-open after signal index (simplified executor).
 
-    df: must include columns [open, close]
-    signals: columns [index, signal, price]
+    - Supports `mode="long"` or `mode="long_short"` (enter short on sell when flat).
+    - Optional `close_at_end` closes any open leg at the final bar close.
+    - `periods_per_year` overrides annualization for stats; auto-estimated if None.
+
+    df: must include columns [open, close]; signals: [index, signal, price].
     """
     df = df.reset_index(drop=True)
     sig = signals.sort_values("index").reset_index(drop=True)
-    positions = []
+    positions: List[dict] = []
     in_pos = False
-    entry_idx = None
-    entry_px = None
+    entry_idx: Optional[int] = None
+    entry_px: Optional[float] = None
+    side: Optional[str] = None  # 'long' or 'short'
     slip = slippage_bps / 10000.0 if slippage_bps else 0.0
 
     for _, s in sig.iterrows():
         idx = int(s["index"]) + 1  # next bar
         if idx >= len(df):
             break
-        if s["signal"] == "buy" and not in_pos:
-            entry_idx = idx
-            entry_px = df.loc[idx, "open"] * (1 + fee_rate + slip)
-            in_pos = True
-        elif s["signal"] == "sell" and in_pos:
-            exit_idx = idx
-            exit_px = df.loc[idx, "open"] * (1 - fee_rate - slip)
+        sigv = str(s["signal"]) if "signal" in s else ""
+        if sigv == "buy":
+            if not in_pos:
+                entry_idx = idx
+                entry_px = df.loc[idx, "open"] * (1 + fee_rate + slip)
+                side = "long"
+                in_pos = True
+            elif in_pos and side == "short":
+                exit_idx = idx
+                exit_px = df.loc[idx, "open"] * (1 + fee_rate + slip)
+                ret = (entry_px - exit_px) / entry_px
+                positions.append({
+                    "entry_idx": entry_idx,
+                    "entry_px": float(entry_px),
+                    "exit_idx": exit_idx,
+                    "exit_px": float(exit_px),
+                    "ret": float(ret),
+                    "size": float(position_size),
+                    "side": "short",
+                })
+                in_pos = False
+                entry_idx = None
+                entry_px = None
+                side = None
+        elif sigv == "sell":
+            if in_pos and side == "long":
+                exit_idx = idx
+                exit_px = df.loc[idx, "open"] * (1 - fee_rate - slip)
+                ret = (exit_px - entry_px) / entry_px
+                positions.append({
+                    "entry_idx": entry_idx,
+                    "entry_px": float(entry_px),
+                    "exit_idx": exit_idx,
+                    "exit_px": float(exit_px),
+                    "ret": float(ret),
+                    "size": float(position_size),
+                    "side": "long",
+                })
+                in_pos = False
+                entry_idx = None
+                entry_px = None
+                side = None
+            elif not in_pos and mode == "long_short":
+                entry_idx = idx
+                entry_px = df.loc[idx, "open"] * (1 - fee_rate - slip)
+                side = "short"
+                in_pos = True
+
+    if close_at_end and in_pos and entry_idx is not None and entry_px is not None and side is not None:
+        exit_idx = len(df) - 1
+        if side == "long":
+            exit_px = df.loc[exit_idx, "close"] * (1 - fee_rate - slip)
             ret = (exit_px - entry_px) / entry_px
-            positions.append({
-                "entry_idx": entry_idx,
-                "entry_px": float(entry_px),
-                "exit_idx": exit_idx,
-                "exit_px": float(exit_px),
-                "ret": float(ret),
-                "size": float(position_size),
-                "side": "long",
-            })
-            in_pos = False
-            entry_idx = None
-            entry_px = None
+        else:
+            exit_px = df.loc[exit_idx, "close"] * (1 + fee_rate + slip)
+            ret = (entry_px - exit_px) / entry_px
+        positions.append({
+            "entry_idx": entry_idx,
+            "entry_px": float(entry_px),
+            "exit_idx": exit_idx,
+            "exit_px": float(exit_px),
+            "ret": float(ret),
+            "size": float(position_size),
+            "side": side,
+        })
 
     trades = pd.DataFrame(positions)
     equity = _build_equity_curve(len(df), trades, initial_capital=initial_capital, position_size=position_size)
@@ -254,7 +306,7 @@ def simple_execute(
     exposure_bars = 0
     if not trades.empty:
         exposure_bars = int((trades["exit_idx"] - trades["entry_idx"]).clip(lower=0).sum())
-    ppy = _estimate_periods_per_year_from_df(df)
+    ppy = periods_per_year if periods_per_year is not None else _estimate_periods_per_year_from_df(df)
     stats = _basic_stats(trades, equity, exposure_bars, periods_per_year=ppy)
     return BacktestResult(trades=trades, equity_curve=equity, stats=stats)
 
@@ -269,13 +321,18 @@ def execute_with_risk(
     initial_capital: float = 1.0,
     position_size: float = 1.0,
     slippage_bps: float = 0.0,
+    mode: Literal["long", "long_short"] = "long",
+    close_at_end: bool = False,
+    periods_per_year: Optional[float] = None,
 ) -> BacktestResult:
-    """Bar-by-bar executor with next-bar entries, TP/SL intrabar checks, and opposite-signal exits.
+    """Bar-by-bar executor with next-bar entries, intrabar TP/SL, and signal exits.
 
-    Execution rules:
-    - Enter long at next bar open when encountering a buy signal.
-    - While in position, on each subsequent bar check TP (first) then SL against high/low.
-    - If no TP/SL hit and a sell signal occurs, exit at the next bar open.
+    Execution rules (side-aware):
+    - Enter long at next bar open on buy; if `mode="long_short"`, enter short at next bar open on sell (when flat).
+    - While in position, check TP first, then SL within the current bar using high/low; fees and slippage applied.
+    - If no TP/SL hit and opposite signal appears, exit at next bar open.
+    - If `close_at_end` is True and still in a position at the last bar, close at final close.
+    - `periods_per_year` overrides annualization for stats; auto-estimated if None.
     """
     df = df.reset_index(drop=True)
     n = len(df)
@@ -287,8 +344,9 @@ def execute_with_risk(
             sig_map[i] = []
         sig_map[i].append(s["signal"])
 
-    trades = []
+    trades: List[dict] = []
     in_pos = False
+    side: Optional[str] = None
     entry_exec_idx: Optional[int] = None
     entry_px: Optional[float] = None
     stop_px: Optional[float] = None
@@ -301,8 +359,8 @@ def execute_with_risk(
         if in_pos and entry_exec_idx is not None and i >= entry_exec_idx:
             bar_low = float(df.loc[i, "low"]) if "low" in df.columns else float(df.loc[i, "open"])  # fallback
             bar_high = float(df.loc[i, "high"]) if "high" in df.columns else float(df.loc[i, "open"])  # fallback
-            # TP first
-            if tp_px is not None and bar_high >= tp_px:
+            # TP first (side-aware)
+            if side == "long" and tp_px is not None and bar_high >= tp_px:
                 exit_px = tp_px * (1 - fee_rate - slip)
                 trades.append({
                     "entry_idx": entry_exec_idx,
@@ -320,7 +378,7 @@ def execute_with_risk(
                 tp_px = None
                 i += 1
                 continue
-            if stop_px is not None and bar_low <= stop_px:
+            if side == "long" and stop_px is not None and bar_low <= stop_px:
                 exit_px = stop_px * (1 - fee_rate - slip)
                 trades.append({
                     "entry_idx": entry_exec_idx,
@@ -338,6 +396,43 @@ def execute_with_risk(
                 tp_px = None
                 i += 1
                 continue
+            # Short intrabar
+            if side == "short" and tp_px is not None and bar_low <= tp_px:
+                exit_px = tp_px * (1 + fee_rate + slip)
+                trades.append({
+                    "entry_idx": entry_exec_idx,
+                    "entry_px": float(entry_px),
+                    "exit_idx": i,
+                    "exit_px": float(exit_px),
+                    "ret": float((entry_px - exit_px) / entry_px),
+                    "size": float(position_size),
+                    "side": "short",
+                })
+                in_pos = False
+                entry_exec_idx = None
+                entry_px = None
+                stop_px = None
+                tp_px = None
+                i += 1
+                continue
+            if side == "short" and stop_px is not None and bar_high >= stop_px:
+                exit_px = stop_px * (1 + fee_rate + slip)
+                trades.append({
+                    "entry_idx": entry_exec_idx,
+                    "entry_px": float(entry_px),
+                    "exit_idx": i,
+                    "exit_px": float(exit_px),
+                    "ret": float((entry_px - exit_px) / entry_px),
+                    "size": float(position_size),
+                    "side": "short",
+                })
+                in_pos = False
+                entry_exec_idx = None
+                entry_px = None
+                stop_px = None
+                tp_px = None
+                i += 1
+                continue
 
         # Process signals on this bar
         sigs_here = sig_map.get(i, [])
@@ -347,8 +442,9 @@ def execute_with_risk(
                 entry_px = float(df.loc[entry_exec_idx, "open"]) * (1 + fee_rate + slip)
                 stop_px = entry_px * (1 - stop_loss_pct) if stop_loss_pct is not None else None
                 tp_px = entry_px * (1 + take_profit_pct) if take_profit_pct is not None else None
+                side = "long"
                 in_pos = True
-        elif in_pos and "sell" in sigs_here:
+        elif in_pos and side == "long" and "sell" in sigs_here:
             # Exit at next-bar open if exists and no TP/SL already hit
             if i + 1 < n:
                 exit_idx = i + 1
@@ -367,14 +463,61 @@ def execute_with_risk(
                 entry_px = None
                 stop_px = None
                 tp_px = None
+                side = None
+        elif not in_pos and mode == "long_short" and "sell" in sigs_here:
+            if i + 1 < n:
+                entry_exec_idx = i + 1
+                entry_px = float(df.loc[entry_exec_idx, "open"]) * (1 - fee_rate - slip)
+                stop_px = entry_px * (1 + stop_loss_pct) if stop_loss_pct is not None else None
+                tp_px = entry_px * (1 - take_profit_pct) if take_profit_pct is not None else None
+                side = "short"
+                in_pos = True
+        elif in_pos and side == "short" and "buy" in sigs_here:
+            if i + 1 < n:
+                exit_idx = i + 1
+                exit_px = float(df.loc[exit_idx, "open"]) * (1 + fee_rate + slip)
+                trades.append({
+                    "entry_idx": entry_exec_idx,
+                    "entry_px": float(entry_px),
+                    "exit_idx": exit_idx,
+                    "exit_px": float(exit_px),
+                    "ret": float((entry_px - exit_px) / entry_px),
+                    "size": float(position_size),
+                    "side": "short",
+                })
+                in_pos = False
+                entry_exec_idx = None
+                entry_px = None
+                stop_px = None
+                tp_px = None
+                side = None
 
         i += 1
+
+    # Force close at end
+    if close_at_end and in_pos and entry_exec_idx is not None and entry_px is not None and side is not None:
+        exit_idx = n - 1
+        if side == "long":
+            exit_px = float(df.loc[exit_idx, "close"]) * (1 - fee_rate - slip)
+            ret = float((exit_px - entry_px) / entry_px)
+        else:
+            exit_px = float(df.loc[exit_idx, "close"]) * (1 + fee_rate + slip)
+            ret = float((entry_px - exit_px) / entry_px)
+        trades.append({
+            "entry_idx": entry_exec_idx,
+            "entry_px": float(entry_px),
+            "exit_idx": exit_idx,
+            "exit_px": float(exit_px),
+            "ret": ret,
+            "size": float(position_size),
+            "side": side,
+        })
 
     trades = pd.DataFrame(trades)
     equity = _build_equity_curve(len(df), trades, initial_capital=initial_capital, position_size=position_size)
     exposure_bars = 0
     if not trades.empty:
         exposure_bars = int((trades["exit_idx"] - trades["entry_idx"]).clip(lower=0).sum())
-    ppy = _estimate_periods_per_year_from_df(df)
+    ppy = periods_per_year if periods_per_year is not None else _estimate_periods_per_year_from_df(df)
     stats = _basic_stats(trades, equity, exposure_bars, periods_per_year=ppy)
     return BacktestResult(trades=trades, equity_curve=equity, stats=stats)

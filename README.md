@@ -50,6 +50,9 @@ Web API（JSON）
     - `--initial-capital 1.0`：初始资金（默认 1.0）
     - `--position-size 1.0`：每笔使用资金比例（0..1，默认 1.0）
     - `--slippage-bps 0`：每边滑点（基点，默认 0）
+    - `--mode long|long_short`：执行模式（仅做多 或 做多做空，默认 long）
+    - `--close-at-end`：最后一根K线强制平仓
+    - `--ppyear`：指定年化bar数（默认自动估算；示例：`252` 日线，`365*24` 小时）
     - `--stop-pct/--tp-pct`：风控（触发则按当根高低价内成交）
     - `--save-trades out/trades.csv`、`--save-stats out/stats.json`：保存交易与统计
 

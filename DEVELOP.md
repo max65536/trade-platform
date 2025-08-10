@@ -51,9 +51,9 @@ Backtest（回测引擎）
 - [x] 资金曲线（bar 对齐，forward-fill）
 - [x] 统计扩展（PF/回撤/持仓/暴露）
 - [x] `initial_capital/position_size/slippage_bps`
-- [ ] 做空/翻转模式
-- [ ] 末尾强制平仓选项
-- [ ] Sharpe/Sortino/CAGR（含 `--ppyear`）
+- [x] 做空/翻转模式
+- [x] 末尾强制平仓选项
+- [x] Sharpe/Sortino/CAGR（含 `--ppyear`）
 
 CLI / Pipeline
 - [x] backtest 新参数（保存 trades/stats）

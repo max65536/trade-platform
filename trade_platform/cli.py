@@ -231,6 +231,9 @@ def cmd_backtest(args: argparse.Namespace):
             initial_capital=args.initial_capital,
             position_size=args.position_size,
             slippage_bps=args.slippage_bps,
+            mode=args.mode,
+            close_at_end=args.close_at_end,
+            periods_per_year=args.ppyear,
         )
     else:
         res = simple_execute(
@@ -240,6 +243,9 @@ def cmd_backtest(args: argparse.Namespace):
             initial_capital=args.initial_capital,
             position_size=args.position_size,
             slippage_bps=args.slippage_bps,
+            mode=args.mode,
+            close_at_end=args.close_at_end,
+            periods_per_year=args.ppyear,
         )
     print("Backtest stats:")
     for k, v in res.stats.items():
@@ -519,6 +525,9 @@ def build_parser():
     b.add_argument("--initial-capital", type=float, default=1.0, help="Starting equity (default 1.0)")
     b.add_argument("--position-size", type=float, default=1.0, help="Fraction of equity per trade (0..1)")
     b.add_argument("--slippage-bps", type=float, default=0.0, help="Slippage in basis points per side")
+    b.add_argument("--mode", choices=["long", "long_short"], default="long", help="Execution mode: long-only or allow shorts on sell")
+    b.add_argument("--close-at-end", action="store_true", help="Force-close any open position at the final bar close")
+    b.add_argument("--ppyear", type=float, default=None, help="Override periods per year for annualized stats (e.g., 252 for daily, 365*24 for hourly)")
     # strategy filters
     b.add_argument("--rsi-min", type=float, default=None)
     b.add_argument("--rsi-max", type=float, default=None)
