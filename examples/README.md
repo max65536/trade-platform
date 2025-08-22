@@ -22,19 +22,6 @@ Quickstart
    - `pdm run python examples/plot_example.py`
    - Output PNG saved to `examples/out/plot.png`
 
-WebUI walkthrough
-- Launch server: `pdm run ex_webui`
-- Open: http://127.0.0.1:8000
-- Single timeframe page (`/echarts`):
-  - Input path: `examples/data/BTCUSDT-1h.csv` (after running `ex_gen`)
-  - Toggle indicators (MACD/RSI/ATR) and Chan overlays as desired
-  - Press Load to view chart; inspect signals and indicators
-- Multi-timeframe page (`/echarts-mtf`):
-  - Lower input: `examples/data/BTCUSDT-4h.csv`
-  - Higher input: `examples/data/BTCUSDT-1d.csv`
-  - Options: enable `require_htf_breakout`, set `min_htf_run=2`
-  - Load to see LTF with HTF bands and filtered signals
-
 CLI alternatives (after generating synthetic CSVs)
 - Single TF backtest:
   - `pdm run trade-cli backtest --input examples/data/BTCUSDT-1h.csv --ppyear 8760 --stop-pct 0.02 --tp-pct 0.04 --save-trades examples/out/trades.csv --save-stats examples/out/stats.json`
@@ -55,5 +42,4 @@ PDM script aliases
 - `pdm run ex_mtf`: run multi-timeframe alignment + backtest example
 - `pdm run ex_plot`: render a PNG chart to examples/out/plot.png
 - `pdm run ex_all`: run all the above in sequence
-- `pdm run ex_webui`: start WebUI server
-- `pdm run examples`: interactive menu (or `--list`, `--run gen|backtest|mtf|plot|all|webui`)
+- `pdm run examples`: interactive menu (or `--list`, `--run gen|backtest|mtf|plot|all`)

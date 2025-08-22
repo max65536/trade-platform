@@ -31,19 +31,12 @@ def run_all():
     run_plot()
 
 
-def run_webui(host: str = "127.0.0.1", port: int = 8000):
-    from trade_platform.webui_app.server import main as webui_main
-    print(f"Starting WebUI at http://{host}:{port} (Ctrl+C to stop)")
-    webui_main(["--host", host, "--port", str(port)])
-
-
 CHOICES = {
     "gen": ("Generate synthetic data", run_gen),
     "backtest": ("Run single-timeframe backtest", run_backtest),
     "mtf": ("Run MTF alignment + backtest", run_mtf),
     "plot": ("Render PNG plot with signals/trades", run_plot),
     "all": ("Run all examples in sequence", run_all),
-    "webui": ("Start WebUI server", run_webui),
 }
 
 
@@ -69,19 +62,14 @@ def interactive_menu():
         return 1
     key = keys[idx - 1]
     label, fn = CHOICES[key]
-    if key == "webui":
-        run_webui()
-    else:
-        fn()
+    fn()
     return 0
 
 
 def main(argv: list[str] | None = None):
-    parser = argparse.ArgumentParser(description="Run examples: generate, backtest, mtf, plot, webui")
+    parser = argparse.ArgumentParser(description="Run examples: generate, backtest, mtf, plot")
     parser.add_argument("--list", action="store_true", help="List available example targets")
     parser.add_argument("--run", choices=list(CHOICES.keys()), default=None, help="Run a specific target")
-    parser.add_argument("--host", default="127.0.0.1", help="WebUI host (with --run webui)")
-    parser.add_argument("--port", type=int, default=8000, help="WebUI port (with --run webui)")
     args = parser.parse_args(argv)
 
     if args.list:
@@ -90,14 +78,10 @@ def main(argv: list[str] | None = None):
         return 0
     if args.run:
         label, fn = CHOICES[args.run]
-        if args.run == "webui":
-            run_webui(args.host, args.port)
-        else:
-            fn()
+        fn()
         return 0
     return interactive_menu()
 
 
 if __name__ == "__main__":
     sys.exit(main())
-

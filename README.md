@@ -8,30 +8,12 @@ Trade Platform (ccxt + TA + Chan)
 - 多周期合成（MTF）：将高周期线段/中枢对齐到低周期，按方向与突破过滤信号
 - 回测器与可视化（matplotlib）
 - 命令行工具
- - 最简 Web UI（本地浏览器）
 
 快速开始（PDM）
 - Python 3.10+
 - 安装依赖：`pdm install`（如未安装 PDM，可用 `pipx install pdm`）
 - 运行 CLI：`pdm run trade-cli --help`
-- 运行 WebUI：`pdm run trade-webui`，打开浏览器访问 `http://127.0.0.1:8000`
-
-ECharts 行情与 MTF（交互视图）
-- 单周期：打开 `http://127.0.0.1:8000/echarts`
-  - 数据源：CSV 路径或 交易所（exchange/symbol/timeframe/limit/since）
-  - 指标：SMA/EMA 叠加，MACD/RSI/ATR 子图（可选）
-  - 缠论：pivot bands/segments/signals（可选）
-  - 交互：多子图联动、十字光标、区间缩放
-- 多周期：打开 `http://127.0.0.1:8000/echarts-mtf`
-  - LTF/HTF：CSV 或 交易所（lower_tf/higher_tf）
-  - 过滤：`require_htf_breakout`、`min_htf_run`
-  - 对比：基础信号 vs MTF 过滤信号（可分别开关）
-
-Web API（JSON）
-- `GET /api/ohlcv`：返回 LTF OHLCV + 所选指标 + 缠论（bands/segments/signals）
-  - 主要参数：`input_path` 或 `exchange/symbol/timeframe`，`limit`，`since`，`sma=20,50`，`ema=50,100`，`macd/rsi/atr=1/0`，`bands/segments/signals=1/0`
-- `GET /api/mtf`：返回 LTF OHLCV + 对齐后的 HTF bands + 基础/过滤信号 + 指标
-  - 主要参数：`lower_input/higher_input` 或 `exchange/symbol + lower_tf/higher_tf`，`limit`，`since`，`require_htf_breakout`，`min_htf_run`；指标参数同上
+ 
 
 命令行用法
 - 拉取K线：
@@ -69,14 +51,6 @@ Web API（JSON）
 - 其他子图（默认关闭，可按需开启）：
     - `--show-rsi`：增加 RSI(14) 子图（含 70/30 参考线）
   - `--show-atr`：增加 ATR(14) 子图
-
-WebUI（最小版，无第三方依赖）
-- 启动：`pdm run trade-webui --host 127.0.0.1 --port 8000`
-- 在浏览器中填写表单参数并回测：
-  - CSV 路径（服务进程可访问的本地路径）
-  - 可选时间范围、策略过滤（RSI/ATR）、风险参数（fee/止损/止盈）、仓位与滑点
-  - 生成结果页：统计表、回测图（含信号/交易）、导出 trades.csv 和 stats.json
-- 说明：为避免引入 web 依赖，WebUI 不支持直接文件上传；若需要可将数据放至本机并提供路径。
 
 - 批量拉取：
   - `pdm run trade-cli batch --exchange binance --symbols BTC/USDT ETH/USDT --timeframes 4h 1d --output-dir data/spot --name-template {symbol_noslash}-{timeframe}.csv --max-bars 5000`
@@ -162,7 +136,6 @@ WebUI（最小版，无第三方依赖）
   - backtest.py        回测引擎
  - plotting.py        可视化（主图可叠加 SMA/EMA，子图支持 MACD/RSI/ATR）
   - cli.py             命令行入口
-  - webui.py           WebUI（标准库 http.server）与 JSON API（/api/ohlcv, /api/mtf）
  - pyproject.toml     PDM 项目配置（依赖/脚本）
 
 说明

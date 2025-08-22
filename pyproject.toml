@@ -27,7 +27,6 @@ dev = [
 
 [project.scripts]
 trade-cli = "trade_platform.cli:main"
-trade-webui = "trade_platform.webui_app.server:main"
 
 [tool.pdm]
 package-dir = "."
@@ -47,5 +46,4 @@ ex_backtest = "python examples/backtest_example.py"
 ex_mtf = "python examples/mtf_example.py"
 ex_plot = "python examples/plot_example.py"
 ex_all = "python examples/generate_synthetic.py && python examples/backtest_example.py && python examples/mtf_example.py && python examples/plot_example.py"
-ex_webui = "trade-webui --host 127.0.0.1 --port 8000"
 examples = "python examples/runner.py"
