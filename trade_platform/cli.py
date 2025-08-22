@@ -151,6 +151,8 @@ def cmd_analyze(args: argparse.Namespace):
     df["atr14"] = ta.atr(df, 14)
     out = chan.analyze(
         df,
+        signal_mode=args.signal_mode,
+        structure_mode=args.structure_mode,
         div_min_price_ext_pct=args.div_min_price_ext_pct,
         div_min_hist_delta=args.div_min_hist_delta,
         div_require_hist_sign_consistency=args.div_require_hist_sign_consistency,
@@ -203,6 +205,8 @@ def cmd_backtest(args: argparse.Namespace):
 
     out = chan.analyze(
         df,
+        signal_mode=args.signal_mode,
+        structure_mode=args.structure_mode,
         div_min_price_ext_pct=args.div_min_price_ext_pct,
         div_min_hist_delta=args.div_min_hist_delta,
         div_require_hist_sign_consistency=args.div_require_hist_sign_consistency,
@@ -274,12 +278,16 @@ def cmd_mtf(args: argparse.Namespace):
     # analyze both frames
     lo = chan.analyze(
         ldf,
+        signal_mode=args.signal_mode,
+        structure_mode=args.structure_mode,
         div_min_price_ext_pct=args.div_min_price_ext_pct,
         div_min_hist_delta=args.div_min_hist_delta,
         div_require_hist_sign_consistency=args.div_require_hist_sign_consistency,
     )
     ho = chan.analyze(
         hdf,
+        signal_mode=args.signal_mode,
+        structure_mode=args.structure_mode,
         div_min_price_ext_pct=args.div_min_price_ext_pct,
         div_min_hist_delta=args.div_min_hist_delta,
         div_require_hist_sign_consistency=args.div_require_hist_sign_consistency,
@@ -372,6 +380,8 @@ def cmd_plot(args: argparse.Namespace):
     else:
         out = chan.analyze(
             df,
+            signal_mode=args.signal_mode,
+            structure_mode=args.structure_mode,
             div_min_price_ext_pct=args.div_min_price_ext_pct,
             div_min_hist_delta=args.div_min_hist_delta,
             div_require_hist_sign_consistency=args.div_require_hist_sign_consistency,
@@ -405,6 +415,8 @@ def cmd_plot(args: argparse.Namespace):
             if 'out' not in locals():
                 out = chan.analyze(
                     df,
+                    signal_mode=args.signal_mode,
+                    structure_mode=args.structure_mode,
                     div_min_price_ext_pct=args.div_min_price_ext_pct,
                     div_min_hist_delta=args.div_min_hist_delta,
                     div_require_hist_sign_consistency=args.div_require_hist_sign_consistency,
@@ -509,6 +521,8 @@ def build_parser():
     a = sub.add_parser("analyze", help="Run indicators + Chan analysis")
     a.add_argument("--input", required=True)
     a.add_argument("--out", default=None)
+    a.add_argument("--signal-mode", choices=["hindsight", "causal"], default="hindsight", help="Signal timing: hindsight (default) or causal")
+    a.add_argument("--structure-mode", choices=["hindsight", "causal"], default="hindsight", help="Structure detection: use future bars (hindsight) or strictly causal")
     # divergence tuning
     a.add_argument("--div-min-price-ext-pct", type=float, default=0.0, help="Min price extension percent for divergence, e.g., 0.003")
     a.add_argument("--div-min-hist-delta", type=float, default=0.0, help="Min MACD histogram delta for divergence")
@@ -521,6 +535,8 @@ def build_parser():
     b.add_argument("--input", required=True)
     b.add_argument("--start", default=None)
     b.add_argument("--end", default=None)
+    b.add_argument("--signal-mode", choices=["hindsight", "causal"], default="hindsight")
+    b.add_argument("--structure-mode", choices=["hindsight", "causal"], default="hindsight")
     b.add_argument("--fee", type=float, default=0.0005)
     b.add_argument("--initial-capital", type=float, default=1.0, help="Starting equity (default 1.0)")
     b.add_argument("--position-size", type=float, default=1.0, help="Fraction of equity per trade (0..1)")
@@ -550,6 +566,8 @@ def build_parser():
     m.add_argument("--lower-input", required=True, help="Lower timeframe CSV path")
     m.add_argument("--higher-input", required=True, help="Higher timeframe CSV path")
     m.add_argument("--out", default=None, help="Write annotated LTF CSV")
+    m.add_argument("--signal-mode", choices=["hindsight", "causal"], default="hindsight")
+    m.add_argument("--structure-mode", choices=["hindsight", "causal"], default="hindsight")
     m.add_argument("--run-backtest", action="store_true", help="Run backtest on filtered LTF signals")
     m.add_argument("--fee", type=float, default=0.0005)
     m.add_argument("--require-htf-breakout", action="store_true", help="Keep buys only if close>HTF pivot_high (and sells if close<HTF pivot_low)")
@@ -574,6 +592,8 @@ def build_parser():
     g.add_argument("--input", required=True)
     g.add_argument("--limit", type=int, default=400, help="Plot last N bars")
     g.add_argument("--save", default=None, help="Path to save PNG; if omitted, show window")
+    g.add_argument("--signal-mode", choices=["hindsight", "causal"], default="hindsight")
+    g.add_argument("--structure-mode", choices=["hindsight", "causal"], default="hindsight")
     g.add_argument("--use-mtf-bands", action="store_true", help="Use columns htf_pivot_low/high if present")
     g.add_argument("--use-mtf-signals", action="store_true", help="Prefer signal_mtf column if present")
     g.add_argument("--theme", choices=["light", "dark", "minimal"], default="light")

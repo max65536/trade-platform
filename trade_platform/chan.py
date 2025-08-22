@@ -45,6 +45,61 @@ class PivotZone:
     pens: int
 
 
+def _adjust_signal_timing_causal(signals: pd.DataFrame, segments: List[Segment]) -> pd.DataFrame:
+    """Shift signal timestamps to when they become knowable without lookahead.
+
+    Rules (engineering-friendly):
+    - Segment turn signals (kind == 'turn') are emitted at the confirmation of the new
+      segment, not at its start. We map each new segment's start_idx -> end_idx and move
+      the signal index accordingly.
+    - Divergence signals (buy3/sell3) occur at the end of a segment. In real-time, the
+      turn is only confirmed when the next segment (opposite direction) is established.
+      We therefore move such signals to the end_idx of the next segment if it exists.
+    - Pivot breakout/retest signals already use only current/previous bars and bands;
+      keep their indices unchanged.
+    """
+    if signals.empty or not segments:
+        return signals
+
+    import numpy as np
+
+    # Build mapping for new segment confirmation: start_idx -> end_idx
+    start_to_end = {seg.start_idx: seg.end_idx for seg in segments}
+
+    # Build mapping from a segment end to next segment's confirmation index
+    # Find for each segment its successor (by start index)
+    segs_sorted = sorted(segments, key=lambda s: (s.start_idx, s.end_idx))
+    end_to_next_confirm: dict[int, int] = {}
+    for i, seg in enumerate(segs_sorted[:-1]):
+        nxt = segs_sorted[i + 1]
+        end_to_next_confirm[seg.end_idx] = nxt.end_idx
+
+    idx = signals["index"].to_numpy().copy()
+    kind = signals.get("kind")
+    sig = signals.get("signal")
+
+    for r in range(len(signals)):
+        k = kind.iloc[r] if kind is not None else None
+        s = sig.iloc[r] if sig is not None else None
+        old_i = int(idx[r])
+        # Segment turn: move from new-segment start -> new-segment end (confirmation)
+        if k == "turn":
+            if old_i in start_to_end:
+                idx[r] = start_to_end[old_i]
+        # Divergence at previous segment end: move to next segment's confirmation
+        elif k in ("buy3", "sell3"):
+            if old_i in end_to_next_confirm:
+                idx[r] = end_to_next_confirm[old_i]
+        else:
+            # buy1/sell1 (breakout) and buy2/sell2 (retest) stay as-is
+            pass
+
+    out = signals.copy()
+    out["index"] = idx.astype(int)
+    # re-sort if any movement created ordering changes
+    return out.sort_values(["index", "signal"]).reset_index(drop=True)
+
+
 def find_fractals(df: pd.DataFrame, left: int = 2, right: int = 2) -> List[Fractal]:
     """Simplified fractal detection: high/low vs neighbors.
 
@@ -544,6 +599,8 @@ def divergence_signals(
 def analyze_full(
     df: pd.DataFrame,
     *,
+    signal_mode: Literal["hindsight", "causal"] = "hindsight",
+    structure_mode: Literal["hindsight", "causal"] = "hindsight",
     div_min_price_ext_pct: float = 0.0,
     div_min_hist_delta: float = 0.0,
     div_require_hist_sign_consistency: bool = False,
@@ -559,7 +616,10 @@ def analyze_full(
     - 信号：线段拐点、枢纽突破、一/二买卖、背驰（三买/三卖）
     """
     merged = merge_kbars_inclusion(df)
-    fr = find_fractals_on_merged(merged)
+    # Structure mode controls whether fractals peek into future bars
+    fr_right = 0 if structure_mode == "causal" else 2
+    fr_left = 2
+    fr = find_fractals_on_merged(merged, left=fr_left, right=fr_right)
     pens = build_pens_full(fr)
     segs = build_segments_full(pens)
     pivots = build_pivots(pens)
@@ -582,6 +642,9 @@ def analyze_full(
     )
 
     sigs = pd.concat([seg_sigs, piv_sigs, retest, div], ignore_index=True)
+    # Optional: adjust signal timestamps to a causal confirmation point
+    if signal_mode == "causal" and not sigs.empty:
+        sigs = _adjust_signal_timing_causal(sigs, segs)
     if not sigs.empty:
         sigs = (
             sigs.sort_values(["index", "signal"])  # deterministic ordering
@@ -602,6 +665,8 @@ def analyze(
     df: pd.DataFrame,
     mode: str | None = None,
     *,
+    signal_mode: Literal["hindsight", "causal"] = "hindsight",
+    structure_mode: Literal["hindsight", "causal"] = "hindsight",
     # divergence tuning (only for full mode)
     div_min_price_ext_pct: float = 0.0,
     div_min_hist_delta: float = 0.0,
@@ -615,6 +680,8 @@ def analyze(
         return analyze.__wrapped__(df)  # type: ignore[attr-defined]
     return analyze_full(
         df,
+        signal_mode=signal_mode,
+        structure_mode=structure_mode,
         div_min_price_ext_pct=div_min_price_ext_pct,
         div_min_hist_delta=div_min_hist_delta,
         div_require_hist_sign_consistency=div_require_hist_sign_consistency,
