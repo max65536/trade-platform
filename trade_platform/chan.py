@@ -492,12 +492,21 @@ def build_segments_full(pens: List[Pen]) -> List[Segment]:
         if p0.direction == p2.direction and p1.direction != p0.direction:
             start = p0.start
             end = p2.end
+            # Enforce head-to-tail continuity: subsequent segments start at previous end
+            start_idx = start.index
+            start_price = start.price
+            if segs:
+                prev_end_idx = segs[-1].end_idx
+                prev_end_price = segs[-1].end_price
+                if start_idx < prev_end_idx:
+                    start_idx = prev_end_idx
+                    start_price = prev_end_price
             segs.append(
                 Segment(
-                    start_idx=start.index,
+                    start_idx=start_idx,
                     end_idx=end.index,
                     direction=p2.direction,
-                    start_price=start.price,
+                    start_price=start_price,
                     end_price=end.price,
                 )
             )
