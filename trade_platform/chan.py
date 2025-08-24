@@ -476,15 +476,20 @@ def build_pens_full(
 
 
 def build_segments_full(pens: List[Pen]) -> List[Segment]:
-    """Three-pens make a segment (三笔成段) with persistent direction."""
+    """Three-pen zigzag makes a segment (三笔成段：上-下-上 或 下-上-下).
+
+    Segment direction follows the third pen; segment spans from the first pen's start
+    to the third pen's end. Overlap is allowed by advancing index by 2 when a segment
+    is formed.
+    """
     segs: List[Segment] = []
     if len(pens) < 3:
         return segs
     i = 0
     while i + 2 < len(pens):
         p0, p1, p2 = pens[i], pens[i + 1], pens[i + 2]
-        # segment direction follows p2
-        if p0.direction == p1.direction == p2.direction:
+        # zigzag: first and third share direction, middle is opposite
+        if p0.direction == p2.direction and p1.direction != p0.direction:
             start = p0.start
             end = p2.end
             segs.append(
@@ -496,7 +501,7 @@ def build_segments_full(pens: List[Pen]) -> List[Segment]:
                     end_price=end.price,
                 )
             )
-            i += 2  # allow overlap
+            i += 2  # allow overlap of one pen
         else:
             i += 1
     return segs

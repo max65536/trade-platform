@@ -23,7 +23,17 @@ class CandleFrame:
     def read_csv(cls, path: str):
         df = pd.read_csv(path)
         # best-effort normalize
-        if "datetime" not in df.columns and "timestamp" in df.columns:
+        if "datetime" in df.columns:
+            # Coerce to pandas datetime (UTC-naive) if not already
+            try:
+                dt = pd.to_datetime(df["datetime"], utc=True, errors="coerce")
+                # If conversion produced valid datetimes, drop tz to keep project convention (naive UTC)
+                if dt.notna().any():
+                    df["datetime"] = dt.dt.tz_convert(None)
+            except Exception:
+                # Fallback: leave as-is
+                pass
+        elif "timestamp" in df.columns:
             df["datetime"] = pd.to_datetime(df["timestamp"], unit="ms", utc=True).dt.tz_convert(None)
         return cls(df)
 
